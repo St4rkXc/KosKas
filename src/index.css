@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg-primary: #050505;
+  --color-bg-surface: #121212;
+  --color-text-primary: #FAFAFA;
+  --color-text-muted: #71717A;
+  --color-neon-safe: #10B981;
+  --color-neon-warn: #F59E0B;
+  --color-neon-danger: #EF4444;
+  --color-neon-vault: #8B5CF6;
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-sans: 'Inter', sans-serif;
+}
+
+body {
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
