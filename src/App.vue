@@ -13,13 +13,12 @@ import {
     ChevronLeft,
     ChevronRight,
     Clock,
-    AlertTriangle,
 } from "lucide-vue-next";
 import KeypadModal from "./components/KeypadModal.vue";
 import PocketSettingsModal from "./components/PocketSettingsModal.vue";
 import TransferModal from "./components/TransferModal.vue";
 import { useStore } from "./store";
-import { formatRupiah, vibrate, parseAmount, hexFromColorClass, POCKET_IDS } from "./types";
+import { formatRupiah, vibrate, hexFromColorClass, POCKET_IDS } from "./types";
 import { resolveIcon } from "./iconMap";
 
 const store = useStore();

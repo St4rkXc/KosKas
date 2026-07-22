@@ -1,16 +1,16 @@
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from "vue";
-import { Trash2, Plus, X, AlertCircle, PiggyBank } from "lucide-vue-next";
-import { Pocket, AVAILABLE_ICONS, AVAILABLE_COLORS, formatRupiah, vibrate, parseAmount } from "../types";
-import { useStore } from "../store";
-import { resolveIcon } from "../iconMap";
+import { ref, computed, watch, nextTick } from 'vue';
+import { Trash2, Plus, AlertCircle, PiggyBank } from 'lucide-vue-next';
+import { AVAILABLE_ICONS, AVAILABLE_COLORS, formatRupiah, vibrate, parseAmount } from '../types';
+import { useStore } from '../store';
+import { resolveIcon } from '../iconMap';
 
 const props = defineProps<{
     isOpen: boolean;
 }>();
 
 const emit = defineEmits<{
-    (e: "close"): void;
+    (e: 'close'): void;
 }>();
 
 const store = useStore();
@@ -18,12 +18,12 @@ const store = useStore();
 const monthlyFund = ref(0);
 const localAllocations = ref<Record<string, number>>({});
 const editingId = ref<string | null>(null);
-const editValueStr = ref("0");
+const editValueStr = ref('0');
 
 // Custom pocket form state
 const showAddForm = ref(false);
-const newPocketName = ref("");
-const newPocketIcon = ref("Sparkles");
+const newPocketName = ref('');
+const newPocketIcon = ref('Sparkles');
 const newPocketColor = ref(AVAILABLE_COLORS[0].class);
 const newPocketAllocation = ref(0);
 
@@ -32,14 +32,14 @@ const newNameInputRef = ref<HTMLInputElement | null>(null);
 
 watch(
     () => props.isOpen,
-    (newVal) => {
+    newVal => {
         if (newVal) {
             // Set monthly fund to the current total allocation
             monthlyFund.value = store.totalAllocation;
 
             // Copy current pocket allocations to local state
             const allocs: Record<string, number> = {};
-            store.pockets.forEach((p) => {
+            store.pockets.forEach(p => {
                 allocs[p.id] = p.allocation;
             });
             localAllocations.value = allocs;
@@ -48,13 +48,13 @@ watch(
             showAddForm.value = false;
             resetAddForm();
         }
-    },
+    }
 );
 
 // Calculate total allocated to all pockets except Saving and Leftover
 const totalAllocatedExceptSaving = computed(() => {
     return Object.entries(localAllocations.value)
-        .filter(([id]) => id !== "saving" && id !== "leftover")
+        .filter(([id]) => id !== 'saving' && id !== 'leftover')
         .reduce((sum, [, amount]) => sum + amount, 0);
 });
 
@@ -76,21 +76,21 @@ function handleEditClick(pocketId: string) {
 
 function handleMonthlyFundEditClick() {
     vibrate(10);
-    editingId.value = "monthly_fund";
+    editingId.value = 'monthly_fund';
     editValueStr.value = monthlyFund.value.toString();
 }
 
 function handleKeyPress(key: string) {
     vibrate(10);
-    if (key === "DEL") {
-        editValueStr.value = editValueStr.value.length > 1 ? editValueStr.value.slice(0, -1) : "0";
-    } else if (key === "000") {
-        if (editValueStr.value === "0") return;
+    if (key === 'DEL') {
+        editValueStr.value = editValueStr.value.length > 1 ? editValueStr.value.slice(0, -1) : '0';
+    } else if (key === '000') {
+        if (editValueStr.value === '0') return;
         if (editValueStr.value.length + 3 > 15) return;
-        editValueStr.value += "000";
+        editValueStr.value += '000';
     } else {
         if (editValueStr.value.length >= 15) return;
-        editValueStr.value = editValueStr.value === "0" ? key : editValueStr.value + key;
+        editValueStr.value = editValueStr.value === '0' ? key : editValueStr.value + key;
     }
 }
 
@@ -99,7 +99,7 @@ function handleSaveField() {
         vibrate([20, 20]);
         const value = parseAmount(editValueStr.value);
 
-        if (editingId.value === "monthly_fund") {
+        if (editingId.value === 'monthly_fund') {
             monthlyFund.value = value;
         } else {
             // Use reassign-then-delete style so Vue 3 reactivity stays consistent
@@ -111,15 +111,15 @@ function handleSaveField() {
 }
 
 function resetAddForm() {
-    newPocketName.value = "";
-    newPocketIcon.value = "Sparkles";
+    newPocketName.value = '';
+    newPocketIcon.value = 'Sparkles';
     newPocketColor.value = AVAILABLE_COLORS[0].class;
     newPocketAllocation.value = 0;
 }
 
 // Focus the name input when the add form opens (autofocus attribute won't
 // re-fire inside a Vue transition element on subsequent opens).
-watch(showAddForm, (open) => {
+watch(showAddForm, open => {
     if (open) {
         nextTick(() => {
             newNameInputRef.value?.focus();
@@ -139,9 +139,9 @@ function handleAddPocket() {
 }
 
 function handleDeletePocket(id: string) {
-    if (window.confirm("Yakin ingin menghapus pocket ini? Sisa saldonya akan dipindahkan ke Saving (Tabungan).")) {
+    if (window.confirm('Yakin ingin menghapus pocket ini? Sisa saldonya akan dipindahkan ke Saving (Tabungan).')) {
         vibrate([50, 20]);
-        store.deletePocket(id, "saving");
+        store.deletePocket(id, 'saving');
 
         // Remove from local allocations state without using `delete` on a reactive
         // property; rebuild a fresh object so reactivity stays consistent.
@@ -160,11 +160,11 @@ function handleSaveAll() {
 
     // Update all allocations including the computed saving pocket
     const finalAllocations = { ...localAllocations.value };
-    finalAllocations["saving"] = calculatedSavingAllocation.value;
-    finalAllocations["leftover"] = 0; // Leftover allocation is always 0
+    finalAllocations['saving'] = calculatedSavingAllocation.value;
+    finalAllocations['leftover'] = 0; // Leftover allocation is always 0
 
     store.updateAllAllocations(finalAllocations);
-    emit("close");
+    emit('close');
 }
 </script>
 
@@ -191,15 +191,15 @@ function handleSaveAll() {
 
                     <div v-if="editingId === 'monthly_fund'" class="flex gap-2">
                         <div class="flex-1 bg-bg-surface text-white font-mono text-xl p-2 rounded flex items-center justify-end">
-                            {{ (parseAmount(editValueStr) || 0).toLocaleString("id-ID") }}
+                            {{ (parseAmount(editValueStr) || 0).toLocaleString('id-ID') }}
                         </div>
-                        <button @click="handleSaveField" class="bg-neon-safe text-black px-4 font-bold rounded uppercase text-xs"> Set </button>
+                        <button @click="handleSaveField" class="bg-neon-safe text-black px-4 font-bold rounded uppercase text-xs">Set</button>
                     </div>
                     <div v-else class="flex justify-between items-end">
                         <div class="text-neon-safe font-mono text-3xl font-extrabold">
                             {{ formatRupiah(monthlyFund) }}
                         </div>
-                        <button @click="handleMonthlyFundEditClick" class="text-neon-safe text-xs font-bold uppercase underline"> Ubah Saldo </button>
+                        <button @click="handleMonthlyFundEditClick" class="text-neon-safe text-xs font-bold uppercase underline">Ubah Saldo</button>
                     </div>
                 </div>
 
@@ -230,7 +230,7 @@ function handleSaveAll() {
                     <div class="flex justify-between items-center">
                         <h3 class="text-text-muted text-[11px] uppercase font-bold tracking-wider">Daftar Pockets</h3>
                         <button @click="showAddForm = !showAddForm" class="flex items-center gap-1 text-xs text-neon-safe uppercase font-bold">
-                            <Plus :size="14" /> {{ showAddForm ? "Tutup" : "Tambah Pocket" }}
+                            <Plus :size="14" /> {{ showAddForm ? 'Tutup' : 'Tambah Pocket' }}
                         </button>
                     </div>
 
@@ -299,7 +299,7 @@ function handleSaveAll() {
                     <!-- Pocket List Items -->
                     <div class="space-y-2">
                         <div
-                            v-for="pocket in store.pockets.filter((p) => p.id !== 'saving' && p.id !== 'leftover')"
+                            v-for="pocket in store.pockets.filter(p => p.id !== 'saving' && p.id !== 'leftover')"
                             :key="pocket.id"
                             class="bg-bg-primary p-4 rounded-sm border border-[#1E1E1E] flex flex-col gap-3"
                         >
@@ -321,9 +321,9 @@ function handleSaveAll() {
 
                             <div v-if="editingId === pocket.id" class="flex gap-2">
                                 <div class="flex-1 bg-bg-surface text-white font-mono text-lg p-2 rounded flex items-center justify-end">
-                                    {{ (parseAmount(editValueStr) || 0).toLocaleString("id-ID") }}
+                                    {{ (parseAmount(editValueStr) || 0).toLocaleString('id-ID') }}
                                 </div>
-                                <button @click="handleSaveField" class="bg-neon-safe text-black px-4 font-bold rounded uppercase text-xs"> Set </button>
+                                <button @click="handleSaveField" class="bg-neon-safe text-black px-4 font-bold rounded uppercase text-xs">Set</button>
                             </div>
                             <div v-else class="flex justify-between items-end">
                                 <div>
@@ -332,7 +332,7 @@ function handleSaveAll() {
                                         {{ formatRupiah(localAllocations[pocket.id] || 0) }}
                                     </div>
                                 </div>
-                                <button @click="handleEditClick(pocket.id)" class="text-neon-safe text-xs font-bold uppercase underline"> Ubah Alokasi </button>
+                                <button @click="handleEditClick(pocket.id)" class="text-neon-safe text-xs font-bold uppercase underline">Ubah Alokasi</button>
                             </div>
                         </div>
                     </div>
