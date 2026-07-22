@@ -30,15 +30,21 @@ watch(
     },
 );
 
-const amount = computed(() => parseInt(amountStr.value, 10));
+const amount = computed(() => {
+    const n = parseInt(amountStr.value, 10);
+    return Number.isFinite(n) ? n : 0;
+});
 
 function handleKeyPress(key: string) {
     vibrate(10);
     if (key === "DEL") {
         amountStr.value = amountStr.value.length > 1 ? amountStr.value.slice(0, -1) : "0";
     } else if (key === "000") {
-        amountStr.value = amountStr.value === "0" ? "0" : amountStr.value + "000";
+        if (amountStr.value === "0") return;
+        if (amountStr.value.length + 3 > 15) return;
+        amountStr.value += "000";
     } else {
+        if (amountStr.value.length >= 15) return;
         amountStr.value = amountStr.value === "0" ? key : amountStr.value + key;
     }
 }

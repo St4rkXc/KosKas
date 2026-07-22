@@ -38,27 +38,31 @@ const iconMap: Record<string, any> = {
     Sparkles,
 };
 
+// Safe icon resolver -> falls back to Sparkles when name is unknown.
+const resolveIcon = (name: string) => iconMap[name] || Sparkles;
+
 watch(
     () => props.isOpen,
     (newVal) => {
         if (newVal) {
-            fromPocketId.value = store.pockets[0]?.id || "";
-            toPocketId.value = store.pockets.find((p) => p.id !== fromPocketId.value)?.id || "";
             amountStr.value = "0";
             transferNote.value = "";
             vibrate(10);
+            // If there aren't at least 2 pockets we can't perform a transfer
+            if (store.pockets.length < 2) {
+                fromPocketId.value = store.pockets[0]?.id || "";
+                toPocketId.value = "";
+                return;
+            }
+            fromPocketId.value = store.pockets[0].id;
+            toPocketId.value = store.pockets.find((p) => p.id !== fromPocketId.value)!.id;
         }
     },
 );
 
-const amount = computed(() => parseInt(amountStr.value, 10));
-
-const fromPocket = computed(() => {
-    return store.pockets.find((p) => p.id === fromPocketId.value);
-});
-
-const toPocket = computed(() => {
-    return store.pockets.find((p) => p.id === toPocketId.value);
+const amount = computed(() => {
+    const n = parseInt(amountStr.value, 10);
+    return Number.isFinite(n) ? n : 0;
 });
 
 const fromPocketBalance = computed(() => {
@@ -76,8 +80,11 @@ function handleKeyPress(key: string) {
     if (key === "DEL") {
         amountStr.value = amountStr.value.length > 1 ? amountStr.value.slice(0, -1) : "0";
     } else if (key === "000") {
-        amountStr.value = amountStr.value === "0" ? "0" : amountStr.value + "000";
+        if (amountStr.value === "0") return;
+        if (amountStr.value.length + 3 > 15) return;
+        amountStr.value += "000";
     } else {
+        if (amountStr.value.length >= 15) return;
         amountStr.value = amountStr.value === "0" ? key : amountStr.value + key;
     }
 }
@@ -144,7 +151,7 @@ function selectToPocket(id: string) {
                                 fromPocketId === pocket.id ? `${pocket.colorClass} border-transparent` : 'bg-[#1E1E1E] text-text-muted border-[#1E1E1E]',
                             ]"
                         >
-                            <component :is="iconMap[pocket.icon]" :size="12" />
+                            <component :is="resolveIcon(pocket.icon)" :size="12" />
                             <span>{{ pocket.name }} ({{ formatRupiah(store.pocketBalances[pocket.id] || 0) }})</span>
                         </button>
                     </div>
@@ -163,7 +170,7 @@ function selectToPocket(id: string) {
                                 toPocketId === pocket.id ? `${pocket.colorClass} border-transparent` : 'bg-[#1E1E1E] text-text-muted border-[#1E1E1E]',
                             ]"
                         >
-                            <component :is="iconMap[pocket.icon]" :size="12" />
+                            <component :is="resolveIcon(pocket.icon)" :size="12" />
                             <span>{{ pocket.name }} ({{ formatRupiah(store.pocketBalances[pocket.id] || 0) }})</span>
                         </button>
                     </div>
@@ -177,6 +184,7 @@ function selectToPocket(id: string) {
                         type="text"
                         placeholder="e.g. Alokasi lebih pangan, Tambahan kos"
                         class="w-full bg-[#1E1E1E] border border-white/5 px-3 py-2 text-white text-sm rounded focus:outline-none focus:border-neon-safe"
+                        aria-label="Catatan Transfer"
                     />
                 </div>
             </div>

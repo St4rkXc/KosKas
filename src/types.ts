@@ -7,7 +7,7 @@ export interface Pocket {
     isSystem?: boolean;
 }
 
-export type TransactionType = "expense" | "transfer";
+export type TransactionType = 'expense' | 'transfer';
 
 export interface Transaction {
     id: string;
@@ -21,50 +21,97 @@ export interface Transaction {
     rolloverDate?: string; // YYYY-MM-DD
 }
 
-export const AVAILABLE_ICONS = ["Utensils", "Home", "Fuel", "Coffee", "ShieldAlert", "PiggyBank", "Coins", "ShoppingBag", "Gamepad2", "Heart", "BookOpen", "Plane", "Car", "Gift", "Sparkles"];
+export const AVAILABLE_ICONS = ['Utensils', 'Home', 'Fuel', 'Coffee', 'ShieldAlert', 'PiggyBank', 'Coins', 'ShoppingBag', 'Gamepad2', 'Heart', 'BookOpen', 'Plane', 'Car', 'Gift', 'Sparkles'];
 
 export const AVAILABLE_COLORS = [
-    { name: "Emerald", class: "bg-[#10B981] text-black" },
-    { name: "Blue", class: "bg-[#3B82F6] text-white" },
-    { name: "Amber", class: "bg-[#F59E0B] text-black" },
-    { name: "Red", class: "bg-[#EF4444] text-white" },
-    { name: "Purple", class: "bg-[#8B5CF6] text-white" },
-    { name: "Pink", class: "bg-[#EC4899] text-white" },
-    { name: "Teal", class: "bg-[#14B8A6] text-white" },
-    { name: "Indigo", class: "bg-[#6366F1] text-white" },
-    { name: "Orange", class: "bg-[#F97316] text-black" },
+    { name: 'Emerald', class: 'bg-[#10B981] text-black' },
+    { name: 'Blue', class: 'bg-[#3B82F6] text-white' },
+    { name: 'Amber', class: 'bg-[#F59E0B] text-black' },
+    { name: 'Red', class: 'bg-[#EF4444] text-white' },
+    { name: 'Purple', class: 'bg-[#8B5CF6] text-white' },
+    { name: 'Pink', class: 'bg-[#EC4899] text-white' },
+    { name: 'Teal', class: 'bg-[#14B8A6] text-white' },
+    { name: 'Indigo', class: 'bg-[#6366F1] text-white' },
+    { name: 'Orange', class: 'bg-[#F97316] text-black' },
 ];
 
 export const DEFAULT_POCKETS: Pocket[] = [
-    { id: "pangan", name: "Pangan", allocation: 1500000, colorClass: "bg-[#10B981] text-black", icon: "Utensils", isSystem: true },
-    { id: "kos", name: "Fixed / Kos", allocation: 1000000, colorClass: "bg-[#3B82F6] text-white", icon: "Home", isSystem: true },
-    { id: "transportasi", name: "Transportasi", allocation: 300000, colorClass: "bg-[#F59E0B] text-black", icon: "Fuel", isSystem: true },
-    { id: "lifestyle", name: "Lifestyle", allocation: 300000, colorClass: "bg-[#EF4444] text-white", icon: "Coffee", isSystem: true },
-    { id: "darurat", name: "Dana Darurat", allocation: 200000, colorClass: "bg-[#8B5CF6] text-white", icon: "ShieldAlert", isSystem: true },
-    { id: "saving", name: "Tabungan", allocation: 0, colorClass: "bg-[#EC4899] text-white", icon: "PiggyBank", isSystem: true },
-    { id: "leftover", name: "Sisa Pangan", allocation: 0, colorClass: "bg-[#14B8A6] text-white", icon: "Coins", isSystem: true },
+    {
+        id: 'pangan',
+        name: 'Pangan',
+        allocation: 1500000,
+        colorClass: 'bg-[#10B981] text-black',
+        icon: 'Utensils',
+        isSystem: true,
+    },
+    {
+        id: 'kos',
+        name: 'Fixed / Kos',
+        allocation: 1000000,
+        colorClass: 'bg-[#3B82F6] text-white',
+        icon: 'Home',
+        isSystem: true,
+    },
+    {
+        id: 'transportasi',
+        name: 'Transportasi',
+        allocation: 300000,
+        colorClass: 'bg-[#F59E0B] text-black',
+        icon: 'Fuel',
+        isSystem: true,
+    },
+    {
+        id: 'lifestyle',
+        name: 'Lifestyle',
+        allocation: 300000,
+        colorClass: 'bg-[#EF4444] text-white',
+        icon: 'Coffee',
+        isSystem: true,
+    },
+    {
+        id: 'darurat',
+        name: 'Dana Darurat',
+        allocation: 200000,
+        colorClass: 'bg-[#8B5CF6] text-white',
+        icon: 'ShieldAlert',
+        isSystem: true,
+    },
+    {
+        id: 'saving',
+        name: 'Tabungan',
+        allocation: 0,
+        colorClass: 'bg-[#EC4899] text-white',
+        icon: 'PiggyBank',
+        isSystem: true,
+    },
+    {
+        id: 'leftover',
+        name: 'Sisa Pangan',
+        allocation: 0,
+        colorClass: 'bg-[#14B8A6] text-white',
+        icon: 'Coins',
+        isSystem: true,
+    },
 ];
 
 // Vibrate utility
 export const vibrate = (pattern: number | number[]) => {
-    if (typeof navigator !== "undefined" && navigator.vibrate) {
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
         try {
             navigator.vibrate(pattern);
-        } catch (e) {
-            // Ignore
-        }
+        } catch (e) {}
     }
 };
 
 export const formatRupiah = (amount: number) => {
-    if (amount === undefined || amount === null) return "Rp 0";
-    const prefix = amount < 0 ? "-" : "";
+    if (amount === undefined || amount === null || !Number.isFinite(amount)) return 'Rp 0';
+    const isNegative = amount < 0;
     const absAmount = Math.abs(amount);
-    const formatted = new Intl.NumberFormat("id-ID", {
-        style: "currency",
-        currency: "IDR",
+    const formatted = new Intl.NumberFormat('id-ID', {
+        style: 'currency',
+        currency: 'IDR',
         minimumFractionDigits: 0,
         maximumFractionDigits: 0,
     }).format(absAmount);
-    return `${prefix}${formatted}`;
+    return isNegative ? `-${formatted}` : formatted;
 };
