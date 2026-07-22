@@ -25,6 +25,8 @@ import {
     LayoutGrid,
     TrendingUp,
     TrendingDown,
+    ChevronLeft,
+    ChevronRight,
 } from "lucide-vue-next";
 import KeypadModal from "./components/KeypadModal.vue";
 import PocketSettingsModal from "./components/PocketSettingsModal.vue";
@@ -38,6 +40,9 @@ const showPerformance = ref(false);
 const isKeypadOpen = ref(false);
 const isPocketSettingsOpen = ref(false);
 const isTransferOpen = ref(false);
+
+// Selected month for performance view (defaults to current month)
+const selectedMonth = ref(new Date());
 
 // Map icon strings to Lucide Icon components
 const iconMap: Record<string, any> = {
@@ -101,13 +106,21 @@ const pocketStats = computed(() => {
 });
 
 const monthlyPerformance = computed(() => {
+    const txs = selectedMonthTransactions.value;
+    const prevTxs = previousMonthTransactions.value;
+
     const performance = store.pockets.map((pocket) => {
-        const expenses = store.transactions.filter((t) => t.type === "expense" && t.fromPocketId === pocket.id);
+        const expenses = txs.filter((t) => t.type === "expense" && t.fromPocketId === pocket.id);
         const spent = expenses.reduce((sum, t) => sum + t.amount, 0);
         const transactionCount = expenses.length;
-        const remaining = store.pocketBalances[pocket.id] || 0;
+        const remaining = pocket.allocation - spent;
         const utilization = pocket.allocation > 0 ? (spent / pocket.allocation) * 100 : 0;
         const isOver = remaining < 0;
+
+        const prevExpenses = prevTxs.filter((t) => t.type === "expense" && t.fromPocketId === pocket.id);
+        const prevSpent = prevExpenses.reduce((sum, t) => sum + t.amount, 0);
+        const spendingChange = prevSpent > 0 ? ((spent - prevSpent) / prevSpent) * 100 : spent > 0 ? 100 : 0;
+        const isBoros = spent > prevSpent;
 
         return {
             id: pocket.id,
@@ -116,10 +129,13 @@ const monthlyPerformance = computed(() => {
             colorClass: pocket.colorClass,
             allocation: pocket.allocation,
             spent,
+            prevSpent,
             remaining,
             utilization,
             isOver,
             transactionCount,
+            spendingChange: Math.abs(spendingChange),
+            isBoros,
         };
     });
 
@@ -131,13 +147,20 @@ const monthlyPerformance = computed(() => {
     const mostUsedPocket = performance[0] || null;
     const leastUsedPocket = performance[performance.length - 1] || null;
 
+    const prevTotalSpent = performance.reduce((sum, p) => sum + p.prevSpent, 0);
+    const totalSpendingChange = prevTotalSpent > 0 ? ((totalSpent - prevTotalSpent) / prevTotalSpent) * 100 : totalSpent > 0 ? 100 : 0;
+    const isOverallBoros = totalSpent > prevTotalSpent;
+
     return {
         pockets: performance,
         totalSpent,
+        prevTotalSpent,
         totalAllocation,
         overallUtilization,
         mostUsedPocket,
         leastUsedPocket,
+        totalSpendingChange: Math.abs(totalSpendingChange),
+        isOverallBoros,
     };
 });
 
@@ -182,6 +205,42 @@ const currentDateStr = computed(() => {
     const now = new Date();
     return `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`;
 });
+
+function getMonthStart(date: Date): number {
+    return new Date(date.getFullYear(), date.getMonth(), 1).getTime();
+}
+
+function getMonthEnd(date: Date): number {
+    return new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999).getTime();
+}
+
+function getTransactionsForMonth(date: Date) {
+    const start = getMonthStart(date);
+    const end = getMonthEnd(date);
+    return store.transactions.filter((t) => t.timestamp >= start && t.timestamp <= end);
+}
+
+function getPreviousMonth(date: Date): Date {
+    return new Date(date.getFullYear(), date.getMonth() - 1, 1);
+}
+
+function getNextMonth(date: Date): Date {
+    return new Date(date.getFullYear(), date.getMonth() + 1, 1);
+}
+
+function isCurrentMonth(date: Date): boolean {
+    const now = new Date();
+    return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+}
+
+const selectedMonthName = computed(() => {
+    const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+    return `${months[selectedMonth.value.getMonth()]} ${selectedMonth.value.getFullYear()}`;
+});
+
+const selectedMonthTransactions = computed(() => getTransactionsForMonth(selectedMonth.value));
+
+const previousMonthTransactions = computed(() => getTransactionsForMonth(getPreviousMonth(selectedMonth.value)));
 
 function formatDateTime(timestamp: number) {
     const date = new Date(timestamp);
@@ -229,7 +288,7 @@ function formatDateTime(timestamp: number) {
             <div class="w-full flex justify-between items-start">
                 <div class="text-text-muted text-xs font-mono uppercase tracking-[0.2em] mb-4">Total Sisa Saldo (Semua Pocket)</div>
                 <div class="flex gap-2 z-30">
-                    <button @click="showPerformance = !showPerformance; showHistory = false" class="text-text-muted hover:text-text-primary transition-colors" :aria-label="showPerformance ? 'Tutup Performance' : 'Tampilkan Performance'">
+                    <button @click="showPerformance = !showPerformance; showHistory = false; if (!showPerformance) selectedMonth = new Date()" class="text-text-muted hover:text-text-primary transition-colors" :aria-label="showPerformance ? 'Tutup Performance' : 'Tampilkan Performance'">
                         <BarChart3 :size="20" />
                     </button>
                     <button @click="showHistory = !showHistory; showPerformance = false" class="text-text-muted hover:text-text-primary transition-colors" :aria-label="showHistory ? 'Tutup Riwayat' : 'Tampilkan Riwayat'">
@@ -327,120 +386,260 @@ function formatDateTime(timestamp: number) {
                     </TransitionGroup>
                 </div>
 
-                <div v-else-if="showPerformance" class="flex flex-col gap-6">
-                    <!-- Performance Header -->
-                    <div class="flex justify-between items-end mb-2">
-                        <h2 class="text-text-muted text-[11px] uppercase font-bold tracking-[0.2em]">Performa Bulanan</h2>
-                        <div class="h-px flex-1 mx-4 bg-bg-surface"></div>
-                        <div class="flex gap-4 items-center">
-                            <button @click="showPerformance = false; showHistory = false" class="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-neon-safe hover:text-[#059669]">
-                                <LayoutGrid :size="10" /> Dashboard
+                <div v-else-if="showPerformance" class="flex flex-col gap-8">
+                    <!-- Performance Header with Month Selector -->
+                    <div class="flex flex-col sm:flex-row sm:items-end gap-4 sm:gap-6 pb-6 border-b border-bg-surface">
+                        <div class="flex items-center gap-3">
+                            <button @click="selectedMonth = getPreviousMonth(selectedMonth)" class="text-text-muted hover:text-text-primary transition-colors p-1">
+                                <ChevronLeft :size="24" />
+                            </button>
+                            <div class="flex flex-col">
+                                <h2 class="text-text-primary text-2xl font-bold">{{ selectedMonthName }}</h2>
+                                <span class="text-text-muted text-xs mt-0.5">Laporan Bulanan</span>
+                            </div>
+                            <button @click="selectedMonth = getNextMonth(selectedMonth)" :class="['transition-colors p-1', isCurrentMonth(selectedMonth) ? 'text-text-muted/30 cursor-not-allowed' : 'text-text-muted hover:text-text-primary']" :disabled="isCurrentMonth(selectedMonth)">
+                                <ChevronRight :size="24" />
+                            </button>
+                        </div>
+                        <div class="flex gap-3 sm:ml-auto">
+                            <button v-if="!isCurrentMonth(selectedMonth)" @click="selectedMonth = new Date()" class="px-3 py-1.5 text-xs font-medium text-neon-safe border border-neon-safe/30 rounded hover:bg-neon-safe/10 transition-colors">
+                                Bulan Ini
+                            </button>
+                            <button @click="showPerformance = false; showHistory = false" class="px-3 py-1.5 text-xs font-medium text-text-muted border border-bg-surface rounded hover:text-text-primary transition-colors flex items-center gap-1.5">
+                                <LayoutGrid :size="12" /> Dashboard
                             </button>
                         </div>
                     </div>
 
-                    <!-- Summary Cards -->
+                    <!-- Primary Metric: Overall Spending Trend -->
+                    <div class="relative overflow-hidden bg-bg-surface rounded-lg p-6 border-l-4" :class="monthlyPerformance.isOverallBoros ? 'border-neon-danger' : 'border-neon-safe'">
+                        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+                            <div class="flex items-center gap-4">
+                                <div class="p-3 rounded-lg" :class="monthlyPerformance.isOverallBoros ? 'bg-neon-danger/10' : 'bg-neon-safe/10'">
+                                    <component :is="monthlyPerformance.isOverallBoros ? TrendingUp : TrendingDown" :size="28" :class="monthlyPerformance.isOverallBoros ? 'text-neon-danger' : 'text-neon-safe'" />
+                                </div>
+                                <div>
+                                    <div class="text-text-muted text-sm font-medium mb-1">
+                                        {{ monthlyPerformance.isOverallBoros ? "Lebih Boros" : "Lebih Hemat" }} dari Bulan Lalu
+                                    </div>
+                                    <div class="font-mono text-4xl font-bold" :class="monthlyPerformance.isOverallBoros ? 'text-neon-danger' : 'text-neon-safe'">
+                                        {{ monthlyPerformance.totalSpendingChange.toFixed(1) }}%
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex gap-6 lg:gap-10">
+                                <div>
+                                    <div class="text-text-muted text-xs font-medium mb-1">Total Pengeluaran</div>
+                                    <div class="font-mono text-2xl font-bold text-text-primary">{{ formatRupiah(monthlyPerformance.totalSpent) }}</div>
+                                </div>
+                                <div>
+                                    <div class="text-text-muted text-xs font-medium mb-1">Bulan Lalu</div>
+                                    <div class="font-mono text-2xl font-bold text-text-muted">{{ formatRupiah(monthlyPerformance.prevTotalSpent) }}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Secondary Metrics: Summary Cards -->
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <div class="bg-bg-surface p-4 rounded-sm border-l-4 border-neon-safe">
-                            <div class="text-text-muted text-[10px] uppercase font-bold tracking-wider mb-1">Total Alokasi</div>
-                            <div class="font-mono text-xl font-bold text-text-primary">{{ formatRupiah(monthlyPerformance.totalAllocation) }}</div>
+                        <div class="bg-bg-surface rounded-lg p-5 border border-bg-surface/50 hover:border-bg-surface transition-colors">
+                            <div class="text-text-muted text-xs font-medium mb-2">Total Alokasi</div>
+                            <div class="font-mono text-2xl font-bold text-text-primary">{{ formatRupiah(monthlyPerformance.totalAllocation) }}</div>
+                            <div class="mt-3 h-1.5 bg-bg-primary rounded-full overflow-hidden">
+                                <div class="h-full bg-neon-safe rounded-full" style="width: 100%"></div>
+                            </div>
                         </div>
-                        <div class="bg-bg-surface p-4 rounded-sm border-l-4 border-neon-danger">
-                            <div class="text-text-muted text-[10px] uppercase font-bold tracking-wider mb-1">Total Terpakai</div>
-                            <div class="font-mono text-xl font-bold text-neon-danger">{{ formatRupiah(monthlyPerformance.totalSpent) }}</div>
+                        <div class="bg-bg-surface rounded-lg p-5 border border-bg-surface/50 hover:border-bg-surface transition-colors">
+                            <div class="text-text-muted text-xs font-medium mb-2">Total Terpakai</div>
+                            <div class="font-mono text-2xl font-bold" :class="monthlyPerformance.overallUtilization > 80 ? 'text-neon-danger' : 'text-text-primary'">{{ formatRupiah(monthlyPerformance.totalSpent) }}</div>
+                            <div class="mt-3 h-1.5 bg-bg-primary rounded-full overflow-hidden">
+                                <div class="h-full rounded-full transition-all" :class="monthlyPerformance.overallUtilization > 80 ? 'bg-neon-danger' : monthlyPerformance.overallUtilization > 50 ? 'bg-neon-warn' : 'bg-neon-safe'" :style="{ width: `${Math.min(monthlyPerformance.overallUtilization, 100)}%` }"></div>
+                            </div>
                         </div>
-                        <div class="bg-bg-surface p-4 rounded-sm border-l-4" :class="monthlyPerformance.overallUtilization > 80 ? 'border-neon-danger' : monthlyPerformance.overallUtilization > 50 ? 'border-neon-warn' : 'border-neon-safe'">
-                            <div class="text-text-muted text-[10px] uppercase font-bold tracking-wider mb-1">Utilisasi Keseluruhan</div>
-                            <div class="font-mono text-xl font-bold" :class="monthlyPerformance.overallUtilization > 80 ? 'text-neon-danger' : monthlyPerformance.overallUtilization > 50 ? 'text-neon-warn' : 'text-neon-safe'">
+                        <div class="bg-bg-surface rounded-lg p-5 border border-bg-surface/50 hover:border-bg-surface transition-colors">
+                            <div class="text-text-muted text-xs font-medium mb-2">Utilisasi Keseluruhan</div>
+                            <div class="font-mono text-2xl font-bold" :class="monthlyPerformance.overallUtilization > 80 ? 'text-neon-danger' : monthlyPerformance.overallUtilization > 50 ? 'text-neon-warn' : 'text-neon-safe'">
                                 {{ monthlyPerformance.overallUtilization.toFixed(1) }}%
                             </div>
+                            <div class="mt-3 h-1.5 bg-bg-primary rounded-full overflow-hidden">
+                                <div class="h-full rounded-full transition-all" :class="monthlyPerformance.overallUtilization > 80 ? 'bg-neon-danger' : monthlyPerformance.overallUtilization > 50 ? 'bg-neon-warn' : 'bg-neon-safe'" :style="{ width: `${Math.min(monthlyPerformance.overallUtilization, 100)}%` }"></div>
+                            </div>
                         </div>
                     </div>
 
-                    <!-- Most/Least Used -->
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div v-if="monthlyPerformance.mostUsedPocket" class="bg-bg-surface p-4 rounded-sm border-l-4 border-neon-danger">
-                            <div class="flex items-center gap-2 mb-2">
-                                <TrendingUp :size="14" class="text-neon-danger" />
-                                <span class="text-text-muted text-[10px] uppercase font-bold tracking-wider">Paling Sering Dipakai</span>
+                    <!-- Pocket Analysis Section -->
+                    <div class="bg-bg-surface rounded-lg p-6">
+                        <div class="flex items-center justify-between mb-6">
+                            <h3 class="text-text-primary text-lg font-semibold">Analisis Per Pocket</h3>
+                            <div class="flex gap-4 text-xs">
+                                <span class="flex items-center gap-1.5">
+                                    <span class="w-2 h-2 rounded-full bg-neon-safe"></span>
+                                    <span class="text-text-muted">Hemat</span>
+                                </span>
+                                <span class="flex items-center gap-1.5">
+                                    <span class="w-2 h-2 rounded-full bg-neon-danger"></span>
+                                    <span class="text-text-muted">Boros</span>
+                                </span>
                             </div>
-                            <div class="font-mono text-lg font-bold text-text-primary">{{ monthlyPerformance.mostUsedPocket.name }}</div>
-                            <div class="text-neon-danger font-mono text-sm">{{ monthlyPerformance.mostUsedPocket.utilization.toFixed(1) }}% terpakai</div>
-                            <div class="text-text-muted text-[10px] mt-1">{{ monthlyPerformance.mostUsedPocket.transactionCount }} transaksi</div>
                         </div>
-                        <div v-if="monthlyPerformance.leastUsedPocket" class="bg-bg-surface p-4 rounded-sm border-l-4 border-neon-safe">
-                            <div class="flex items-center gap-2 mb-2">
-                                <TrendingDown :size="14" class="text-neon-safe" />
-                                <span class="text-text-muted text-[10px] uppercase font-bold tracking-wider">Paling Jarang Dipakai</span>
-                            </div>
-                            <div class="font-mono text-lg font-bold text-text-primary">{{ monthlyPerformance.leastUsedPocket.name }}</div>
-                            <div class="text-neon-safe font-mono text-sm">{{ monthlyPerformance.leastUsedPocket.utilization.toFixed(1) }}% terpakai</div>
-                            <div class="text-text-muted text-[10px] mt-1">{{ monthlyPerformance.leastUsedPocket.transactionCount }} transaksi</div>
-                        </div>
-                    </div>
-
-                    <!-- Bar Chart Comparison -->
-                    <div class="bg-bg-surface p-5 rounded-sm">
-                        <h3 class="text-text-muted text-[11px] uppercase font-bold tracking-[0.2em] mb-4">Perbandingan Penggunaan Dana</h3>
-                        <div class="space-y-3">
-                            <div v-for="pocket in monthlyPerformance.pockets" :key="pocket.id" class="flex items-center gap-3">
-                                <div :class="['w-6 h-6 rounded flex items-center justify-center shrink-0', pocket.colorClass]">
-                                    <component :is="resolveIcon(pocket.icon)" :size="12" />
+                        
+                        <!-- Most/Least Used Highlights -->
+                        <div v-if="monthlyPerformance.mostUsedPocket || monthlyPerformance.leastUsedPocket" class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 p-4 bg-bg-primary/30 rounded-lg">
+                            <div v-if="monthlyPerformance.mostUsedPocket" class="flex items-start gap-3">
+                                <div class="p-2 rounded bg-neon-danger/10 shrink-0">
+                                    <TrendingUp :size="16" class="text-neon-danger" />
                                 </div>
-                                <div class="flex-1 min-w-0">
-                                    <div class="flex justify-between items-center mb-1">
-                                        <span class="text-text-primary text-sm font-semibold truncate">{{ pocket.name }}</span>
-                                        <span class="font-mono text-xs" :class="pocket.isOver ? 'text-neon-danger' : 'text-text-muted'">
-                                            {{ formatRupiah(pocket.spent) }} / {{ formatRupiah(pocket.allocation) }}
+                                <div>
+                                    <div class="text-text-muted text-xs mb-0.5">Paling Sering</div>
+                                    <div class="font-semibold text-text-primary">{{ monthlyPerformance.mostUsedPocket.name }}</div>
+                                    <div class="text-neon-danger text-sm font-mono mt-0.5">{{ monthlyPerformance.mostUsedPocket.utilization.toFixed(1) }}% · {{ monthlyPerformance.mostUsedPocket.transactionCount }}x transaksi</div>
+                                </div>
+                            </div>
+                            <div v-if="monthlyPerformance.leastUsedPocket" class="flex items-start gap-3">
+                                <div class="p-2 rounded bg-neon-safe/10 shrink-0">
+                                    <TrendingDown :size="16" class="text-neon-safe" />
+                                </div>
+                                <div>
+                                    <div class="text-text-muted text-xs mb-0.5">Paling Jarang</div>
+                                    <div class="font-semibold text-text-primary">{{ monthlyPerformance.leastUsedPocket.name }}</div>
+                                    <div class="text-neon-safe text-sm font-mono mt-0.5">{{ monthlyPerformance.leastUsedPocket.utilization.toFixed(1) }}% · {{ monthlyPerformance.leastUsedPocket.transactionCount }}x transaksi</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Pocket Bars -->
+                        <div class="space-y-5">
+                            <div v-for="pocket in monthlyPerformance.pockets" :key="pocket.id" class="group">
+                                <div class="flex items-center justify-between mb-2">
+                                    <div class="flex items-center gap-2.5">
+                                        <div :class="['w-8 h-8 rounded-lg flex items-center justify-center shrink-0', pocket.colorClass]">
+                                            <component :is="resolveIcon(pocket.icon)" :size="14" />
+                                        </div>
+                                        <span class="font-medium text-text-primary">{{ pocket.name }}</span>
+                                    </div>
+                                    <div class="flex items-center gap-3">
+                                        <span v-if="pocket.prevSpent > 0" class="text-xs font-mono px-2 py-0.5 rounded" :class="pocket.isBoros ? 'bg-neon-danger/10 text-neon-danger' : 'bg-neon-safe/10 text-neon-safe'">
+                                            {{ pocket.isBoros ? "Boros" : "Hemat" }} {{ pocket.spendingChange.toFixed(0) }}%
                                         </span>
+                                        <span class="text-sm font-mono text-text-muted">{{ formatRupiah(pocket.spent) }} / {{ formatRupiah(pocket.allocation) }}</span>
                                     </div>
-                                    <div class="w-full h-3 bg-[#1E1E1E] rounded-xs overflow-hidden">
-                                        <div
-                                            :class="['h-full transition-all duration-300', pocket.colorClass]"
-                                            :style="{ width: `${Math.min(pocket.utilization, 100)}%` }"
-                                        ></div>
-                                    </div>
-                                    <div class="flex justify-between items-center mt-1">
-                                        <span class="text-[10px] text-text-muted font-mono">{{ pocket.utilization.toFixed(1) }}% terpakai</span>
-                                        <span class="text-[10px] text-text-muted font-mono">{{ pocket.transactionCount }}x transaksi</span>
-                                    </div>
+                                </div>
+                                <div class="h-3 bg-bg-primary rounded-full overflow-hidden">
+                                    <div
+                                        :class="['h-full rounded-full transition-all duration-300', pocket.colorClass]"
+                                        :style="{ width: `${Math.min(pocket.utilization, 100)}%` }"
+                                    ></div>
+                                </div>
+                                <div class="flex justify-between mt-1.5 text-xs text-text-muted font-mono">
+                                    <span>{{ pocket.utilization.toFixed(1) }}% terpakai</span>
+                                    <span>{{ pocket.transactionCount }}x transaksi</span>
                                 </div>
                             </div>
                         </div>
                     </div>
 
                     <!-- Detailed Table -->
-                    <div class="bg-bg-surface p-5 rounded-sm overflow-x-auto">
-                        <h3 class="text-text-muted text-[11px] uppercase font-bold tracking-[0.2em] mb-4">Detail Per Pocket</h3>
-                        <table class="w-full text-sm">
-                            <thead>
-                                <tr class="border-b border-bg-surface">
-                                    <th class="text-left text-text-muted text-[10px] uppercase font-bold tracking-wider py-2 pr-4">Pocket</th>
-                                    <th class="text-right text-text-muted text-[10px] uppercase font-bold tracking-wider py-2 pr-4">Alokasi</th>
-                                    <th class="text-right text-text-muted text-[10px] uppercase font-bold tracking-wider py-2 pr-4">Terpakai</th>
-                                    <th class="text-right text-text-muted text-[10px] uppercase font-bold tracking-wider py-2 pr-4">Sisa</th>
-                                    <th class="text-right text-text-muted text-[10px] uppercase font-bold tracking-wider py-2 pr-4">Utilisasi</th>
-                                    <th class="text-center text-text-muted text-[10px] uppercase font-bold tracking-wider py-2">Transaksi</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr v-for="pocket in monthlyPerformance.pockets" :key="pocket.id" class="border-b border-bg-surface/50">
-                                    <td class="py-3 pr-4">
-                                        <div class="flex items-center gap-2">
-                                            <div :class="['w-5 h-5 rounded flex items-center justify-center', pocket.colorClass]">
-                                                <component :is="resolveIcon(pocket.icon)" :size="10" />
+                    <div class="bg-bg-surface rounded-lg overflow-hidden">
+                        <div class="p-6 pb-4">
+                            <h3 class="text-text-primary text-lg font-semibold">Detail Per Pocket</h3>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead>
+                                    <tr class="border-t border-b border-bg-surface bg-bg-primary/20">
+                                        <th class="text-left text-text-muted text-xs font-semibold py-3 px-4">Pocket</th>
+                                        <th class="text-right text-text-muted text-xs font-semibold py-3 px-4">Alokasi</th>
+                                        <th class="text-right text-text-muted text-xs font-semibold py-3 px-4">Terpakai</th>
+                                        <th class="text-right text-text-muted text-xs font-semibold py-3 px-4">Sisa</th>
+                                        <th class="text-right text-text-muted text-xs font-semibold py-3 px-4">Utilisasi</th>
+                                        <th class="text-right text-text-muted text-xs font-semibold py-3 px-4">vs Bulan Lalu</th>
+                                        <th class="text-center text-text-muted text-xs font-semibold py-3 px-4">Transaksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="pocket in monthlyPerformance.pockets" :key="pocket.id" class="border-b border-bg-surface/30 hover:bg-bg-primary/20 transition-colors">
+                                        <td class="py-3.5 px-4">
+                                            <div class="flex items-center gap-2.5">
+                                                <div :class="['w-6 h-6 rounded-md flex items-center justify-center', pocket.colorClass]">
+                                                    <component :is="resolveIcon(pocket.icon)" :size="12" />
+                                                </div>
+                                                <span class="font-medium text-text-primary">{{ pocket.name }}</span>
                                             </div>
-                                            <span class="text-text-primary font-semibold">{{ pocket.name }}</span>
-                                        </div>
-                                    </td>
-                                    <td class="text-right font-mono text-text-primary py-3 pr-4">{{ formatRupiah(pocket.allocation) }}</td>
-                                    <td class="text-right font-mono text-neon-danger py-3 pr-4">{{ formatRupiah(pocket.spent) }}</td>
-                                    <td class="text-right font-mono py-3 pr-4" :class="pocket.isOver ? 'text-neon-danger' : 'text-neon-safe'">{{ formatRupiah(pocket.remaining) }}</td>
-                                    <td class="text-right font-mono py-3 pr-4" :class="pocket.isOver ? 'text-neon-danger' : 'text-text-muted'">{{ pocket.utilization.toFixed(1) }}%</td>
-                                    <td class="text-center font-mono text-text-muted py-3">{{ pocket.transactionCount }}x</td>
-                                </tr>
-                            </tbody>
-                        </table>
+                                        </td>
+                                        <td class="text-right font-mono text-text-primary py-3.5 px-4">{{ formatRupiah(pocket.allocation) }}</td>
+                                        <td class="text-right font-mono text-neon-danger py-3.5 px-4">{{ formatRupiah(pocket.spent) }}</td>
+                                        <td class="text-right font-mono py-3.5 px-4" :class="pocket.isOver ? 'text-neon-danger' : 'text-neon-safe'">{{ formatRupiah(pocket.remaining) }}</td>
+                                        <td class="text-right font-mono py-3.5 px-4">
+                                            <span :class="pocket.isOver ? 'text-neon-danger font-semibold' : 'text-text-muted'">{{ pocket.utilization.toFixed(1) }}%</span>
+                                        </td>
+                                        <td class="text-right font-mono py-3.5 px-4">
+                                            <span v-if="pocket.prevSpent > 0" :class="pocket.isBoros ? 'text-neon-danger' : 'text-neon-safe'">
+                                                {{ pocket.isBoros ? "+" : "-" }}{{ pocket.spendingChange.toFixed(0) }}%
+                                            </span>
+                                            <span v-else class="text-text-muted">-</span>
+                                        </td>
+                                        <td class="text-center font-mono text-text-muted py-3.5 px-4">{{ pocket.transactionCount }}x</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Transaction History -->
+                    <div class="bg-bg-surface rounded-lg overflow-hidden">
+                        <div class="p-6 pb-4">
+                            <h3 class="text-text-primary text-lg font-semibold">Riwayat Transaksi - {{ selectedMonthName }}</h3>
+                        </div>
+                        <div v-if="selectedMonthTransactions.length === 0" class="text-center text-text-muted py-12">
+                            <div class="text-4xl mb-2">📭</div>
+                            <p class="font-mono text-sm">Tidak ada transaksi pada bulan ini.</p>
+                        </div>
+                        <div v-else class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead>
+                                    <tr class="border-t border-b border-bg-surface bg-bg-primary/20">
+                                        <th class="text-left text-text-muted text-xs font-semibold py-3 px-4">Tanggal</th>
+                                        <th class="text-left text-text-muted text-xs font-semibold py-3 px-4">Keterangan</th>
+                                        <th class="text-right text-text-muted text-xs font-semibold py-3 px-4">Jumlah</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="tx in selectedMonthTransactions" :key="tx.id" class="border-b border-bg-surface/30 hover:bg-bg-primary/20 transition-colors">
+                                        <td class="py-3 px-4 font-mono text-text-muted text-xs">{{ formatDateTime(tx.timestamp) }}</td>
+                                        <td class="py-3 px-4">
+                                            <div class="flex items-center gap-2.5">
+                                                <div
+                                                    class="w-2.5 h-2.5 rounded-full shrink-0"
+                                                    :style="{
+                                                        backgroundColor: tx.type === 'expense' ? getPocket(tx.fromPocketId)?.colorClass.match(/#[A-Fa-f0-9]+/)?.[0] || '#EF4444' : '#F59E0B',
+                                                    }"
+                                                ></div>
+                                                <div>
+                                                    <div class="text-sm font-medium text-text-primary">
+                                                        <span v-if="tx.type === 'expense'">
+                                                            {{ getPocket(tx.fromPocketId)?.name || "Pocket" }}
+                                                        </span>
+                                                        <span v-else-if="tx.isRollover"> Pangan Rollover </span>
+                                                        <span v-else> Transfer </span>
+                                                    </div>
+                                                    <div class="text-xs text-text-muted font-mono mt-0.5">
+                                                        <span v-if="tx.type === 'expense'"> Pengeluaran{{ tx.note ? ` (${tx.note})` : "" }} </span>
+                                                        <span v-else-if="tx.isRollover"> Sisa pangan harian {{ tx.rolloverDate }} </span>
+                                                        <span v-else>
+                                                            {{ getPocket(tx.fromPocketId)?.name }} → {{ getPocket(tx.toPocketId)?.name }}
+                                                            {{ tx.note ? ` (${tx.note})` : "" }}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td class="text-right font-mono text-sm py-3 px-4" :class="tx.type === 'expense' ? 'text-neon-danger' : 'text-text-muted'">
+                                            {{ tx.type === "expense" ? "-" : "" }} {{ formatRupiah(tx.amount) }}
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
 
