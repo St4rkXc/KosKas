@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
-import { Utensils, Home, Fuel, Coffee, ShieldAlert, PiggyBank, Coins, ShoppingBag, Gamepad2, Heart, BookOpen, Plane, Car, Gift, Sparkles, ArrowLeftRight } from "lucide-vue-next";
-import { formatRupiah, vibrate } from "../types";
+import { ArrowLeftRight } from "lucide-vue-next";
+import { formatRupiah, vibrate, parseAmount } from "../types";
 import { useStore } from "../store";
+import { resolveIcon } from "../iconMap";
 
 const props = defineProps<{
     isOpen: boolean;
@@ -19,28 +20,6 @@ const toPocketId = ref("");
 const amountStr = ref("0");
 const transferNote = ref("");
 
-// Map icon names to Lucide Icon components
-const iconMap: Record<string, any> = {
-    Utensils,
-    Home,
-    Fuel,
-    Coffee,
-    ShieldAlert,
-    PiggyBank,
-    Coins,
-    ShoppingBag,
-    Gamepad2,
-    Heart,
-    BookOpen,
-    Plane,
-    Car,
-    Gift,
-    Sparkles,
-};
-
-// Safe icon resolver -> falls back to Sparkles when name is unknown.
-const resolveIcon = (name: string) => iconMap[name] || Sparkles;
-
 watch(
     () => props.isOpen,
     (newVal) => {
@@ -55,15 +34,13 @@ watch(
                 return;
             }
             fromPocketId.value = store.pockets[0].id;
-            toPocketId.value = store.pockets.find((p) => p.id !== fromPocketId.value)!.id;
+            const otherPocket = store.pockets.find((p) => p.id !== fromPocketId.value);
+            toPocketId.value = otherPocket?.id ?? "";
         }
     },
 );
 
-const amount = computed(() => {
-    const n = parseInt(amountStr.value, 10);
-    return Number.isFinite(n) ? n : 0;
-});
+const amount = computed(() => parseAmount(amountStr.value));
 
 const fromPocketBalance = computed(() => {
     if (!fromPocketId.value) return 0;

@@ -6,33 +6,21 @@ import {
     Trash2,
     Plus,
     ArrowLeftRight,
-    Utensils,
-    Home,
-    Fuel,
-    Coffee,
-    ShieldAlert,
-    PiggyBank,
-    Coins,
-    ShoppingBag,
-    Gamepad2,
-    Heart,
-    BookOpen,
-    Plane,
-    Car,
-    Gift,
-    Sparkles,
     BarChart3,
     LayoutGrid,
     TrendingUp,
     TrendingDown,
     ChevronLeft,
     ChevronRight,
+    Clock,
+    AlertTriangle,
 } from "lucide-vue-next";
 import KeypadModal from "./components/KeypadModal.vue";
 import PocketSettingsModal from "./components/PocketSettingsModal.vue";
 import TransferModal from "./components/TransferModal.vue";
 import { useStore } from "./store";
-import { formatRupiah, vibrate } from "./types";
+import { formatRupiah, vibrate, parseAmount, hexFromColorClass, POCKET_IDS } from "./types";
+import { resolveIcon } from "./iconMap";
 
 const store = useStore();
 const showHistory = ref(false);
@@ -41,41 +29,16 @@ const isKeypadOpen = ref(false);
 const isPocketSettingsOpen = ref(false);
 const isTransferOpen = ref(false);
 
-// Selected month for performance view (defaults to current month)
 const selectedMonth = ref(new Date());
 
-// Map icon strings to Lucide Icon components
-const iconMap: Record<string, any> = {
-    Utensils,
-    Home,
-    Fuel,
-    Coffee,
-    ShieldAlert,
-    PiggyBank,
-    Coins,
-    ShoppingBag,
-    Gamepad2,
-    Heart,
-    BookOpen,
-    Plane,
-    Car,
-    Gift,
-    Sparkles,
-};
-
-// Resolve icon component safely -> falls back to Sparkles if name is unknown.
-// Avoids silent blank rendering when a pocket icon string is missing/typo'd.
-const resolveIcon = (name: string) => iconMap[name] || Sparkles;
-
-// Memoize pocket lookup as a map to avoid O(N*M) find() in transaction v-for loops.
 const pocketMap = computed(() => {
-    const map: Record<string, (typeof store.pockets)[number]> = {};
-    store.pockets.forEach((p) => (map[p.id] = p));
+    const map: Record<string, (typeof store.pockets)[number] & { hexColor: string }> = {};
+    for (const p of store.pockets) {
+        map[p.id] = { ...p, hexColor: hexFromColorClass(p.colorClass) };
+    }
     return map;
 });
 
-// Safe lookup helper: tx.fromPocketId / toPocketId are `string | undefined`,
-// so indexing pocketMap directly fails TS. Falls back to undefined cleanly.
 const getPocket = (id: string | undefined) => (id ? pocketMap.value[id] : undefined);
 
 onMounted(() => {
@@ -89,19 +52,26 @@ const daysRemaining = computed(() => {
 });
 
 const pocketStats = computed(() => {
-    const stats: Record<string, { spent: number; remaining: number; percentage: number; isOver: boolean }> = {};
-    store.pockets.forEach((pocket) => {
-        const remaining = store.pocketBalances[pocket.id] || 0;
-        const spent = store.transactions.filter((t) => t.type === "expense" && t.fromPocketId === pocket.id).reduce((sum, t) => sum + t.amount, 0);
+    const spent: Record<string, number> = {};
+    for (const p of store.pockets) spent[p.id] = 0;
 
-        const percentage = pocket.allocation > 0 ? Math.min((spent / pocket.allocation) * 100, 100) : 0;
+    for (const t of store.transactions) {
+        if (t.type === "expense" && t.fromPocketId && t.fromPocketId in spent) {
+            spent[t.fromPocketId] += t.amount;
+        }
+    }
+
+    const stats: Record<string, { spent: number; remaining: number; percentage: number; isOver: boolean }> = {};
+    for (const pocket of store.pockets) {
+        const s = spent[pocket.id];
+        const remaining = store.pocketBalances[pocket.id] || 0;
         stats[pocket.id] = {
-            spent,
+            spent: s,
             remaining,
-            percentage,
+            percentage: pocket.allocation > 0 ? Math.min((s / pocket.allocation) * 100, 100) : 0,
             isOver: remaining < 0,
         };
-    });
+    }
     return stats;
 });
 
@@ -109,16 +79,39 @@ const monthlyPerformance = computed(() => {
     const txs = selectedMonthTransactions.value;
     const prevTxs = previousMonthTransactions.value;
 
+    const spentMap: Record<string, number> = {};
+    const prevSpentMap: Record<string, number> = {};
+    const countMap: Record<string, number> = {};
+    const prevCountMap: Record<string, number> = {};
+
+    for (const p of store.pockets) {
+        spentMap[p.id] = 0;
+        prevSpentMap[p.id] = 0;
+        countMap[p.id] = 0;
+        prevCountMap[p.id] = 0;
+    }
+
+    for (const t of txs) {
+        if (t.type === "expense" && t.fromPocketId && t.fromPocketId in spentMap) {
+            spentMap[t.fromPocketId] += t.amount;
+            countMap[t.fromPocketId]++;
+        }
+    }
+    for (const t of prevTxs) {
+        if (t.type === "expense" && t.fromPocketId && t.fromPocketId in prevSpentMap) {
+            prevSpentMap[t.fromPocketId] += t.amount;
+            prevCountMap[t.fromPocketId]++;
+        }
+    }
+
     const performance = store.pockets.map((pocket) => {
-        const expenses = txs.filter((t) => t.type === "expense" && t.fromPocketId === pocket.id);
-        const spent = expenses.reduce((sum, t) => sum + t.amount, 0);
-        const transactionCount = expenses.length;
+        const spent = spentMap[pocket.id];
+        const transactionCount = countMap[pocket.id];
         const remaining = pocket.allocation - spent;
         const utilization = pocket.allocation > 0 ? (spent / pocket.allocation) * 100 : 0;
         const isOver = remaining < 0;
 
-        const prevExpenses = prevTxs.filter((t) => t.type === "expense" && t.fromPocketId === pocket.id);
-        const prevSpent = prevExpenses.reduce((sum, t) => sum + t.amount, 0);
+        const prevSpent = prevSpentMap[pocket.id];
         const spendingChange = prevSpent > 0 ? ((spent - prevSpent) / prevSpent) * 100 : spent > 0 ? 100 : 0;
         const isBoros = spent > prevSpent;
 
@@ -165,17 +158,21 @@ const monthlyPerformance = computed(() => {
 });
 
 const dailyPanganStats = computed(() => {
-    const panganPocket = store.pockets.find((p) => p.id === "pangan");
+    const panganPocket = store.pockets.find((p) => p.id === POCKET_IDS.PANGAN);
     const panganAllocation = panganPocket ? panganPocket.allocation : 1500000;
 
     const now = new Date();
     const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    const currentDay = now.getDate();
 
     const dailyTarget = Math.floor(panganAllocation / daysInMonth);
 
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const spentToday = store.transactions.filter((t) => t.type === "expense" && t.fromPocketId === "pangan" && t.timestamp >= todayStart).reduce((sum, t) => sum + t.amount, 0);
+    let spentToday = 0;
+    for (const t of store.transactions) {
+        if (t.type === "expense" && t.fromPocketId === POCKET_IDS.PANGAN && t.timestamp >= todayStart) {
+            spentToday += t.amount;
+        }
+    }
 
     return {
         dailyTarget,
@@ -242,22 +239,24 @@ const selectedMonthTransactions = computed(() => getTransactionsForMonth(selecte
 
 const previousMonthTransactions = computed(() => getTransactionsForMonth(getPreviousMonth(selectedMonth.value)));
 
+const nowDate = computed(() => new Date());
+
 function formatDateTime(timestamp: number) {
     const date = new Date(timestamp);
-    const now = new Date();
-    
-    const isToday = date.getDate() === now.getDate() && 
-                    date.getMonth() === now.getMonth() && 
+    const now = nowDate.value;
+
+    const isToday = date.getDate() === now.getDate() &&
+                    date.getMonth() === now.getMonth() &&
                     date.getFullYear() === now.getFullYear();
-                    
+
     const yesterday = new Date(now);
     yesterday.setDate(now.getDate() - 1);
-    const isYesterday = date.getDate() === yesterday.getDate() && 
-                        date.getMonth() === yesterday.getMonth() && 
+    const isYesterday = date.getDate() === yesterday.getDate() &&
+                        date.getMonth() === yesterday.getMonth() &&
                         date.getFullYear() === yesterday.getFullYear();
-                        
+
     const timeStr = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
-    
+
     if (isToday) {
         return `Hari ini, ${timeStr}`;
     } else if (isYesterday) {
@@ -273,7 +272,10 @@ function formatDateTime(timestamp: number) {
     <div v-if="!store.isLoaded" class="min-h-screen bg-bg-primary text-text-primary"></div>
 
     <div v-else class="w-full min-h-screen bg-bg-primary text-text-primary flex flex-col font-sans p-6 sm:p-10 select-none overflow-x-hidden selection:bg-neon-safe/30 relative">
-        <!-- Status Bar Visual Hack -->
+        <div v-if="store.storageFailed" class="fixed top-0 left-0 right-0 z-50 bg-neon-danger/20 border-b border-neon-danger px-4 py-2 text-center">
+            <span class="text-neon-danger text-xs font-mono">⚠ Storage unavailable — data will be lost when you close this tab</span>
+        </div>
+
         <div class="absolute top-4 left-0 w-full px-6 sm:px-10 flex justify-between z-20 pointer-events-none">
             <div class="font-mono text-[10px] text-text-muted">V3.2-TACTICAL • {{ currentDateStr }}</div>
             <div class="font-mono text-[10px] text-text-muted hidden sm:flex gap-2">
@@ -283,7 +285,6 @@ function formatDateTime(timestamp: number) {
             </div>
         </div>
 
-        <!-- Header Space -->
         <header class="flex-none flex flex-col justify-center items-start border-b border-bg-surface mb-8 pb-8 mt-8 sm:mt-12">
             <div class="w-full flex justify-between items-start">
                 <div class="text-text-muted text-xs font-mono uppercase tracking-[0.2em] mb-4">Total Sisa Saldo (Semua Pocket)</div>
@@ -292,7 +293,7 @@ function formatDateTime(timestamp: number) {
                         <BarChart3 :size="20" />
                     </button>
                     <button @click="showHistory = !showHistory; showPerformance = false" class="text-text-muted hover:text-text-primary transition-colors" :aria-label="showHistory ? 'Tutup Riwayat' : 'Tampilkan Riwayat'">
-                        <Settings :size="20" />
+                        <Clock :size="20" />
                     </button>
                 </div>
             </div>
@@ -319,7 +320,6 @@ function formatDateTime(timestamp: number) {
 
         <div class="flex-1 overflow-y-auto pb-32 no-scrollbar">
             <Transition name="fade" mode="out-in">
-                <!-- History / Transactions List -->
                 <div v-if="showHistory" class="flex flex-col gap-2">
                     <div class="flex justify-between items-end mb-4">
                         <h2 class="text-text-muted text-[11px] uppercase font-bold tracking-[0.2em]">Aktivitas Terakhir</h2>
@@ -340,11 +340,10 @@ function formatDateTime(timestamp: number) {
                     <TransitionGroup v-else name="list" tag="div" class="space-y-2">
                         <div v-for="tx in store.transactions" :key="tx.id" class="bg-bg-surface p-4 rounded-sm flex items-center justify-between group overflow-hidden relative">
                             <div class="flex items-center gap-4 z-10 pointer-events-none">
-                                <!-- Dot with pocket color -->
                                 <div
                                     class="w-2.5 h-2.5 rounded-full shrink-0"
                                     :style="{
-                                        backgroundColor: tx.type === 'expense' ? getPocket(tx.fromPocketId)?.colorClass.match(/#[A-Fa-f0-9]+/)?.[0] || '#EF4444' : '#F59E0B',
+                                        backgroundColor: tx.type === 'expense' ? getPocket(tx.fromPocketId)?.hexColor || '#EF4444' : '#F59E0B',
                                     }"
                                 ></div>
 
@@ -387,7 +386,6 @@ function formatDateTime(timestamp: number) {
                 </div>
 
                 <div v-else-if="showPerformance" class="flex flex-col gap-8">
-                    <!-- Performance Header with Month Selector -->
                     <div class="flex flex-col sm:flex-row sm:items-end gap-4 sm:gap-6 pb-6 border-b border-bg-surface">
                         <div class="flex items-center gap-3">
                             <button @click="selectedMonth = getPreviousMonth(selectedMonth)" class="text-text-muted hover:text-text-primary transition-colors p-1">
@@ -411,7 +409,6 @@ function formatDateTime(timestamp: number) {
                         </div>
                     </div>
 
-                    <!-- Primary Metric: Overall Spending Trend -->
                     <div class="relative overflow-hidden bg-bg-surface rounded-lg p-6 border-l-4" :class="monthlyPerformance.isOverallBoros ? 'border-neon-danger' : 'border-neon-safe'">
                         <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
                             <div class="flex items-center gap-4">
@@ -440,7 +437,6 @@ function formatDateTime(timestamp: number) {
                         </div>
                     </div>
 
-                    <!-- Secondary Metrics: Summary Cards -->
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div class="bg-bg-surface rounded-lg p-5 border border-bg-surface/50 hover:border-bg-surface transition-colors">
                             <div class="text-text-muted text-xs font-medium mb-2">Total Alokasi</div>
@@ -467,7 +463,6 @@ function formatDateTime(timestamp: number) {
                         </div>
                     </div>
 
-                    <!-- Pocket Analysis Section -->
                     <div class="bg-bg-surface rounded-lg p-6">
                         <div class="flex items-center justify-between mb-6">
                             <h3 class="text-text-primary text-lg font-semibold">Analisis Per Pocket</h3>
@@ -482,8 +477,7 @@ function formatDateTime(timestamp: number) {
                                 </span>
                             </div>
                         </div>
-                        
-                        <!-- Most/Least Used Highlights -->
+
                         <div v-if="monthlyPerformance.mostUsedPocket || monthlyPerformance.leastUsedPocket" class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 p-4 bg-bg-primary/30 rounded-lg">
                             <div v-if="monthlyPerformance.mostUsedPocket" class="flex items-start gap-3">
                                 <div class="p-2 rounded bg-neon-danger/10 shrink-0">
@@ -507,7 +501,6 @@ function formatDateTime(timestamp: number) {
                             </div>
                         </div>
 
-                        <!-- Pocket Bars -->
                         <div class="space-y-5">
                             <div v-for="pocket in monthlyPerformance.pockets" :key="pocket.id" class="group">
                                 <div class="flex items-center justify-between mb-2">
@@ -538,7 +531,6 @@ function formatDateTime(timestamp: number) {
                         </div>
                     </div>
 
-                    <!-- Detailed Table -->
                     <div class="bg-bg-surface rounded-lg overflow-hidden">
                         <div class="p-6 pb-4">
                             <h3 class="text-text-primary text-lg font-semibold">Detail Per Pocket</h3>
@@ -585,7 +577,6 @@ function formatDateTime(timestamp: number) {
                         </div>
                     </div>
 
-                    <!-- Transaction History -->
                     <div class="bg-bg-surface rounded-lg overflow-hidden">
                         <div class="p-6 pb-4">
                             <h3 class="text-text-primary text-lg font-semibold">Riwayat Transaksi - {{ selectedMonthName }}</h3>
@@ -611,7 +602,7 @@ function formatDateTime(timestamp: number) {
                                                 <div
                                                     class="w-2.5 h-2.5 rounded-full shrink-0"
                                                     :style="{
-                                                        backgroundColor: tx.type === 'expense' ? getPocket(tx.fromPocketId)?.colorClass.match(/#[A-Fa-f0-9]+/)?.[0] || '#EF4444' : '#F59E0B',
+                                                        backgroundColor: tx.type === 'expense' ? getPocket(tx.fromPocketId)?.hexColor || '#EF4444' : '#F59E0B',
                                                     }"
                                                 ></div>
                                                 <div>
@@ -643,9 +634,7 @@ function formatDateTime(timestamp: number) {
                     </div>
                 </div>
 
-                <!-- Dashboard / Cards Grid -->
                 <div v-else class="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                    <!-- Daily Pangan Target Card -->
                     <div
                         :class="[
                             'bg-bg-surface p-5 rounded-sm border-l-4 flex flex-col justify-between',
@@ -684,12 +673,11 @@ function formatDateTime(timestamp: number) {
                         </div>
                     </div>
 
-                    <!-- Dynamic Pockets Grid -->
                     <div
                         v-for="pocket in store.pockets"
                         :key="pocket.id"
                         class="bg-bg-surface p-5 rounded-sm border-l-4 flex flex-col justify-between border-l-current"
-                        :style="{ borderLeftColor: pocket.colorClass.match(/#[A-Fa-f0-9]+/)?.[0] || '#10B981' }"
+                        :style="{ borderLeftColor: pocketMap[pocket.id]?.hexColor || '#10B981' }"
                     >
                         <div>
                             <div class="flex justify-between items-start mb-2">
@@ -719,7 +707,6 @@ function formatDateTime(timestamp: number) {
         </div>
 
         <div class="fixed bottom-8 sm:bottom-12 right-8 sm:right-12 z-30 flex gap-4">
-            <!-- Pockets transfer / settings panel launchers when not showing history -->
             <div v-if="!showHistory" class=" flex gap-4">
                 <button
                     @click="isTransferOpen = true"
@@ -737,7 +724,6 @@ function formatDateTime(timestamp: number) {
                 </button>
             </div>
 
-            <!-- The Signature Add Expense FAB -->
             <div class="">
                 <button
                     @click="isKeypadOpen = true"
@@ -749,7 +735,6 @@ function formatDateTime(timestamp: number) {
             </div>
         </div>
 
-        <!-- Modals -->
         <KeypadModal :is-open="isKeypadOpen" @close="isKeypadOpen = false" @save="handleAddExpense" />
 
         <PocketSettingsModal :is-open="isPocketSettingsOpen" @close="isPocketSettingsOpen = false" />

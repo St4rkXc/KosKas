@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from "vue";
-import { Utensils, Home, Fuel, Coffee, ShieldAlert, PiggyBank, Coins, ShoppingBag, Gamepad2, Heart, BookOpen, Plane, Car, Gift, Sparkles, Trash2, Plus, X, AlertCircle } from "lucide-vue-next";
-import { Pocket, AVAILABLE_ICONS, AVAILABLE_COLORS, formatRupiah, vibrate } from "../types";
+import { Trash2, Plus, X, AlertCircle, PiggyBank } from "lucide-vue-next";
+import { Pocket, AVAILABLE_ICONS, AVAILABLE_COLORS, formatRupiah, vibrate, parseAmount } from "../types";
 import { useStore } from "../store";
+import { resolveIcon } from "../iconMap";
 
 const props = defineProps<{
     isOpen: boolean;
@@ -25,31 +26,6 @@ const newPocketName = ref("");
 const newPocketIcon = ref("Sparkles");
 const newPocketColor = ref(AVAILABLE_COLORS[0].class);
 const newPocketAllocation = ref(0);
-
-// Map icon names to Lucide Icon components
-const iconMap: Record<string, any> = {
-    Utensils,
-    Home,
-    Fuel,
-    Coffee,
-    ShieldAlert,
-    PiggyBank,
-    Coins,
-    ShoppingBag,
-    Gamepad2,
-    Heart,
-    BookOpen,
-    Plane,
-    Car,
-    Gift,
-    Sparkles,
-    Trash2,
-    Plus,
-    X,
-};
-
-// Safe icon resolver -> falls back to Sparkles when name is unknown.
-const resolveIcon = (name: string) => iconMap[name] || Sparkles;
 
 // Template ref for autofocus on the add-pocket name input when the form opens.
 const newNameInputRef = ref<HTMLInputElement | null>(null);
@@ -121,8 +97,7 @@ function handleKeyPress(key: string) {
 function handleSaveField() {
     if (editingId.value) {
         vibrate([20, 20]);
-        const parsed = parseInt(editValueStr.value, 10);
-        const value = Number.isFinite(parsed) ? parsed : 0;
+        const value = parseAmount(editValueStr.value);
 
         if (editingId.value === "monthly_fund") {
             monthlyFund.value = value;
@@ -156,10 +131,9 @@ function handleAddPocket() {
     if (!newPocketName.value.trim()) return;
 
     vibrate([20, 50]);
-    store.addPocket(newPocketName.value.trim(), newPocketAllocation.value, newPocketColor.value, newPocketIcon.value);
+    const newId = store.addPocket(newPocketName.value.trim(), newPocketAllocation.value, newPocketColor.value, newPocketIcon.value);
 
-    // Re-sync local state
-    localAllocations.value[store.pockets[store.pockets.length - 1].id] = newPocketAllocation.value;
+    localAllocations.value = { ...localAllocations.value, [newId]: newPocketAllocation.value };
     showAddForm.value = false;
     resetAddForm();
 }
@@ -217,7 +191,7 @@ function handleSaveAll() {
 
                     <div v-if="editingId === 'monthly_fund'" class="flex gap-2">
                         <div class="flex-1 bg-bg-surface text-white font-mono text-xl p-2 rounded flex items-center justify-end">
-                            {{ (parseInt(editValueStr, 10) || 0).toLocaleString("id-ID") }}
+                            {{ (parseAmount(editValueStr) || 0).toLocaleString("id-ID") }}
                         </div>
                         <button @click="handleSaveField" class="bg-neon-safe text-black px-4 font-bold rounded uppercase text-xs"> Set </button>
                     </div>
@@ -347,7 +321,7 @@ function handleSaveAll() {
 
                             <div v-if="editingId === pocket.id" class="flex gap-2">
                                 <div class="flex-1 bg-bg-surface text-white font-mono text-lg p-2 rounded flex items-center justify-end">
-                                    {{ (parseInt(editValueStr, 10) || 0).toLocaleString("id-ID") }}
+                                    {{ (parseAmount(editValueStr) || 0).toLocaleString("id-ID") }}
                                 </div>
                                 <button @click="handleSaveField" class="bg-neon-safe text-black px-4 font-bold rounded uppercase text-xs"> Set </button>
                             </div>

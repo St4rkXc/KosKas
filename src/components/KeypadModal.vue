@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
-import { formatRupiah, vibrate } from "../types";
+import { formatRupiah, vibrate, parseAmount } from "../types";
 import { useStore } from "../store";
 
 const props = defineProps<{
@@ -30,10 +30,7 @@ watch(
     },
 );
 
-const amount = computed(() => {
-    const n = parseInt(amountStr.value, 10);
-    return Number.isFinite(n) ? n : 0;
-});
+const amount = computed(() => parseAmount(amountStr.value));
 
 function handleKeyPress(key: string) {
     vibrate(10);

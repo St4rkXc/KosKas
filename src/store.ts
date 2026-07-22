@@ -1,12 +1,12 @@
 import { defineStore } from "pinia";
 import { ref, computed, watch } from "vue";
-import { Pocket, Transaction, DEFAULT_POCKETS } from "./types";
+import { Pocket, Transaction, DEFAULT_POCKETS, POCKET_IDS, generateId, isValidPocket, isValidTransaction } from "./types";
 
 const TRANSACTION_STORAGE_KEY = "koskas_transactions";
 const POCKET_STORAGE_KEY = "koskas_pockets";
 const MONTH_START_KEY = "koskas_month_start";
+const ARCHIVE_STORAGE_KEY = "koskas_archives";
 
-// Legacy keys for migration
 const LEGACY_EXPENSE_KEY = "koskas_expenses";
 const LEGACY_BUDGETS_KEY = "koskas_budgets";
 
@@ -15,28 +15,46 @@ export const useStore = defineStore("main", () => {
     const transactions = ref<Transaction[]>([]);
     const monthStart = ref<number>(Date.now());
     const isLoaded = ref(false);
+    const storageFailed = ref(false);
+    let suppressWatch = false;
+
+    function persistToStorage() {
+        try {
+            localStorage.setItem(TRANSACTION_STORAGE_KEY, JSON.stringify(transactions.value));
+            localStorage.setItem(POCKET_STORAGE_KEY, JSON.stringify(pockets.value));
+            localStorage.setItem(MONTH_START_KEY, monthStart.value.toString());
+            storageFailed.value = false;
+        } catch (e) {
+            console.warn("Failed to persist state to localStorage:", e);
+            storageFailed.value = true;
+        }
+    }
 
     function loadFromStorage() {
         const storedTransactions = localStorage.getItem(TRANSACTION_STORAGE_KEY);
         const storedPockets = localStorage.getItem(POCKET_STORAGE_KEY);
         const storedMonthStart = localStorage.getItem(MONTH_START_KEY);
 
-        // 1. Load or migrate pockets
         if (storedPockets) {
             try {
-                pockets.value = JSON.parse(storedPockets);
+                const parsed = JSON.parse(storedPockets);
+                if (Array.isArray(parsed) && parsed.every(isValidPocket)) {
+                    pockets.value = parsed;
+                } else {
+                    console.warn("Corrupt pockets data, using defaults");
+                    pockets.value = structuredClone(DEFAULT_POCKETS);
+                }
             } catch (e) {
-                console.error("Failed to parse pockets");
-                pockets.value = JSON.parse(JSON.stringify(DEFAULT_POCKETS));
+                console.error("Failed to parse pockets", e);
+                pockets.value = structuredClone(DEFAULT_POCKETS);
             }
         } else {
-            // Check legacy budget settings
             const legacyBudgets = localStorage.getItem(LEGACY_BUDGETS_KEY);
             if (legacyBudgets) {
                 try {
                     const parsedLegacy = JSON.parse(legacyBudgets);
                     if (parsedLegacy && typeof parsedLegacy === "object" && !Array.isArray(parsedLegacy)) {
-                        pockets.value = JSON.parse(JSON.stringify(DEFAULT_POCKETS)).map((p: Pocket) => {
+                        pockets.value = structuredClone(DEFAULT_POCKETS).map((p: Pocket) => {
                             const val = parsedLegacy[p.id];
                             if (typeof val === "number" && Number.isFinite(val)) {
                                 p.allocation = val;
@@ -44,17 +62,16 @@ export const useStore = defineStore("main", () => {
                             return p;
                         });
                     } else {
-                        pockets.value = JSON.parse(JSON.stringify(DEFAULT_POCKETS));
+                        pockets.value = structuredClone(DEFAULT_POCKETS);
                     }
                 } catch (e) {
-                    pockets.value = JSON.parse(JSON.stringify(DEFAULT_POCKETS));
+                    pockets.value = structuredClone(DEFAULT_POCKETS);
                 }
             } else {
-                pockets.value = JSON.parse(JSON.stringify(DEFAULT_POCKETS));
+                pockets.value = structuredClone(DEFAULT_POCKETS);
             }
         }
 
-        // 2. Load monthStart
         if (storedMonthStart) {
             const parsed = parseInt(storedMonthStart, 10);
             monthStart.value = Number.isFinite(parsed) ? parsed : Date.now();
@@ -62,28 +79,35 @@ export const useStore = defineStore("main", () => {
             monthStart.value = Date.now();
         }
 
-        // 3. Load or migrate transactions
         if (storedTransactions) {
             try {
-                transactions.value = JSON.parse(storedTransactions);
+                const parsed = JSON.parse(storedTransactions);
+                if (Array.isArray(parsed) && parsed.every(isValidTransaction)) {
+                    transactions.value = parsed;
+                } else {
+                    console.warn("Corrupt transactions data, using empty array");
+                    transactions.value = [];
+                }
             } catch (e) {
-                console.error("Failed to parse transactions");
+                console.error("Failed to parse transactions", e);
+                transactions.value = [];
             }
         } else {
-            // Check legacy expenses
             const legacyExpenses = localStorage.getItem(LEGACY_EXPENSE_KEY);
             if (legacyExpenses) {
                 try {
                     const parsedExpenses = JSON.parse(legacyExpenses);
-                    // Map to new transaction structure
-                    transactions.value = parsedExpenses.map((exp: any) => ({
-                        id: exp.id || Math.random().toString(36).slice(2, 11),
-                        type: "expense" as const,
-                        fromPocketId: exp.categoryId,
-                        amount: exp.amount,
-                        timestamp: exp.timestamp,
-                        note: exp.note || "",
-                    }));
+                    transactions.value = parsedExpenses.map((exp: unknown) => {
+                        const e = exp as Record<string, unknown>;
+                        return {
+                            id: typeof e.id === "string" ? e.id : generateId(),
+                            type: "expense" as const,
+                            fromPocketId: typeof e.categoryId === "string" ? e.categoryId : undefined,
+                            amount: typeof e.amount === "number" && Number.isFinite(e.amount) ? e.amount : 0,
+                            timestamp: typeof e.timestamp === "number" ? e.timestamp : Date.now(),
+                            note: typeof e.note === "string" ? e.note : "",
+                        };
+                    }).filter(isValidTransaction);
                 } catch (e) {
                     console.error("Failed to migrate legacy expenses");
                 }
@@ -91,30 +115,18 @@ export const useStore = defineStore("main", () => {
         }
 
         isLoaded.value = true;
-
-        // Automatically trigger daily pangan rollover calculation on load
         updateRollovers();
     }
 
-    // Persist state to localStorage on changes
     watch(
         [transactions, pockets, monthStart, isLoaded],
         () => {
-            if (!isLoaded.value) return;
-            try {
-                localStorage.setItem(TRANSACTION_STORAGE_KEY, JSON.stringify(transactions.value));
-                localStorage.setItem(POCKET_STORAGE_KEY, JSON.stringify(pockets.value));
-                localStorage.setItem(MONTH_START_KEY, monthStart.value.toString());
-            } catch (e) {
-                // Storage may be unavailable (private mode, quota exceeded). Swallow silently
-                // to keep app responsive; data stays in memory for the session.
-                console.warn("Failed to persist state to localStorage:", e);
-            }
+            if (!isLoaded.value || suppressWatch) return;
+            persistToStorage();
         },
         { deep: true },
     );
 
-    // Calculate current balances of pockets
     const pocketBalances = computed(() => {
         const balances: Record<string, number> = {};
         for (const p of pockets.value) balances[p.id] = p.allocation;
@@ -138,75 +150,97 @@ export const useStore = defineStore("main", () => {
         return Object.values(pocketBalances.value).reduce((sum, bal) => sum + bal, 0);
     });
 
-    // Calculate & Update Daily Pangan Rollover
-    function updateRollovers() {
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = now.getMonth();
-        const todayDate = now.getDate();
-
-        const panganPocket = pockets.value.find((p) => p.id === "pangan");
-        if (!panganPocket) return;
-
-        const totalDays = new Date(year, month + 1, 0).getDate();
-        const dailyLimit = Math.floor(panganPocket.allocation / totalDays);
-
-        const startDate = new Date(monthStart.value);
-        const startDay = startDate.getFullYear() === year && startDate.getMonth() === month ? startDate.getDate() : 1;
-
-        // Pre-index pangan expenses by date to avoid repeated full scans
-        const expensesByDate = new Map<string, number>();
-        for (const t of transactions.value) {
-            if (t.type !== "expense" || t.fromPocketId !== "pangan") continue;
-            const d = new Date(t.timestamp);
-            if (d.getFullYear() === year && d.getMonth() === month) {
-                const key = `${d.getDate()}`;
-                expensesByDate.set(key, (expensesByDate.get(key) ?? 0) + t.amount);
-            }
-        }
-
-        for (let d = startDay; d < todayDate; d++) {
-            const padDate = d.toString().padStart(2, "0");
-            const padMonth = (month + 1).toString().padStart(2, "0");
-            const dateString = `${year}-${padMonth}-${padDate}`;
-
-            const spentOnDay = expensesByDate.get(`${d}`) ?? 0;
-            const leftoverAmount = Math.max(0, dailyLimit - spentOnDay);
-
-            const existingIndex = transactions.value.findIndex((t) => t.isRollover && t.rolloverDate === dateString);
-
-            if (leftoverAmount > 0) {
-                if (existingIndex !== -1) {
-                    transactions.value[existingIndex].amount = leftoverAmount;
-                } else {
-                    const endOfDay = new Date(year, month, d, 23, 59, 59, 999).getTime();
-                    transactions.value.push({
-                        id: `rollover-${dateString}`,
-                        type: "transfer",
-                        fromPocketId: "pangan",
-                        toPocketId: "leftover",
-                        amount: leftoverAmount,
-                        timestamp: endOfDay + 1, // ensures rollover sorts after same-day expenses
-                        isRollover: true,
-                        rolloverDate: dateString,
-                        note: `Sisa pangan harian (${d}/${month + 1})`,
-                    });
-                }
+    function insertSorted(tx: Transaction) {
+        const arr = transactions.value;
+        let lo = 0;
+        let hi = arr.length;
+        while (lo < hi) {
+            const mid = (lo + hi) >>> 1;
+            if (arr[mid].timestamp > tx.timestamp) {
+                lo = mid + 1;
             } else {
-                if (existingIndex !== -1) {
-                    transactions.value.splice(existingIndex, 1);
-                }
+                hi = mid;
             }
         }
-
-        // Sort descending by timestamp
-        transactions.value.sort((a, b) => b.timestamp - a.timestamp);
+        arr.splice(lo, 0, tx);
     }
 
-    // Actions
+    function updateRollovers() {
+        suppressWatch = true;
+        try {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = now.getMonth();
+            const todayDate = now.getDate();
+
+            const panganPocket = pockets.value.find((p) => p.id === POCKET_IDS.PANGAN);
+            if (!panganPocket) return;
+
+            const totalDays = new Date(year, month + 1, 0).getDate();
+            const dailyLimit = Math.floor(panganPocket.allocation / totalDays);
+
+            const startDate = new Date(monthStart.value);
+            const startDay = startDate.getFullYear() === year && startDate.getMonth() === month ? startDate.getDate() : 1;
+
+            const expensesByDate = new Map<string, number>();
+            for (const t of transactions.value) {
+                if (t.type !== "expense" || t.fromPocketId !== POCKET_IDS.PANGAN) continue;
+                const d = new Date(t.timestamp);
+                if (d.getFullYear() === year && d.getMonth() === month) {
+                    const key = `${d.getDate()}`;
+                    expensesByDate.set(key, (expensesByDate.get(key) ?? 0) + t.amount);
+                }
+            }
+
+            for (let d = startDay; d < todayDate; d++) {
+                const padDate = d.toString().padStart(2, "0");
+                const padMonth = (month + 1).toString().padStart(2, "0");
+                const dateString = `${year}-${padMonth}-${padDate}`;
+
+                const spentOnDay = expensesByDate.get(`${d}`) ?? 0;
+                const leftoverAmount = Math.max(0, dailyLimit - spentOnDay);
+
+                const existingIndex = transactions.value.findIndex((t) => t.isRollover && t.rolloverDate === dateString);
+
+                if (leftoverAmount > 0) {
+                    if (existingIndex !== -1) {
+                        transactions.value[existingIndex].amount = leftoverAmount;
+                    } else {
+                        const endOfDay = new Date(year, month, d, 23, 59, 59, 999).getTime();
+                        const rolloverTx: Transaction = {
+                            id: `rollover-${dateString}`,
+                            type: "transfer",
+                            fromPocketId: POCKET_IDS.PANGAN,
+                            toPocketId: POCKET_IDS.LEFTOVER,
+                            amount: leftoverAmount,
+                            timestamp: endOfDay + 1,
+                            isRollover: true,
+                            rolloverDate: dateString,
+                            note: `Sisa pangan harian (${d}/${month + 1})`,
+                        };
+                        insertSorted(rolloverTx);
+                    }
+                } else {
+                    if (existingIndex !== -1) {
+                        transactions.value.splice(existingIndex, 1);
+                    }
+                }
+            }
+        } finally {
+            suppressWatch = false;
+        }
+        persistToStorage();
+    }
+
     function addExpense(pocketId: string, amount: number, note?: string) {
+        if (!pockets.value.some((p) => p.id === pocketId)) {
+            console.error(`Pocket ${pocketId} not found`);
+            return;
+        }
+        if (amount <= 0 || !Number.isFinite(amount)) return;
+
         const newTransaction: Transaction = {
-            id: Math.random().toString(36).slice(2, 11),
+            id: generateId(),
             type: "expense",
             fromPocketId: pocketId,
             amount,
@@ -218,8 +252,18 @@ export const useStore = defineStore("main", () => {
     }
 
     function addTransfer(fromPocketId: string, toPocketId: string, amount: number, note?: string) {
+        if (!pockets.value.some((p) => p.id === fromPocketId)) {
+            console.error(`Source pocket ${fromPocketId} not found`);
+            return;
+        }
+        if (!pockets.value.some((p) => p.id === toPocketId)) {
+            console.error(`Destination pocket ${toPocketId} not found`);
+            return;
+        }
+        if (amount <= 0 || !Number.isFinite(amount)) return;
+
         const newTransaction: Transaction = {
-            id: Math.random().toString(36).slice(2, 11),
+            id: generateId(),
             type: "transfer",
             fromPocketId,
             toPocketId,
@@ -236,9 +280,10 @@ export const useStore = defineStore("main", () => {
         updateRollovers();
     }
 
-    function addPocket(name: string, allocation: number, colorClass: string, icon: string) {
+    function addPocket(name: string, allocation: number, colorClass: string, icon: string): string {
+        const id = `pocket_${generateId().slice(0, 8)}`;
         const newPocket: Pocket = {
-            id: `pocket_${Math.random().toString(36).slice(2, 11)}`,
+            id,
             name,
             allocation,
             colorClass,
@@ -247,6 +292,7 @@ export const useStore = defineStore("main", () => {
         };
         pockets.value.push(newPocket);
         updateRollovers();
+        return id;
     }
 
     function deletePocket(id: string, transferBalanceToPocketId?: string) {
@@ -260,7 +306,7 @@ export const useStore = defineStore("main", () => {
 
         if (balance > 0 && transferBalanceToPocketId) {
             const tx: Transaction = {
-                id: Math.random().toString(36).slice(2, 11),
+                id: generateId(),
                 type: "transfer",
                 fromPocketId: id,
                 toPocketId: transferBalanceToPocketId,
@@ -274,11 +320,10 @@ export const useStore = defineStore("main", () => {
 
         pockets.value.splice(pocketIndex, 1);
 
-        // Rewrite historical transactions ONLY — skip the preservation transfer
         transactions.value.forEach((t) => {
             if (t.id === preserveTransferId) return;
-            if (t.fromPocketId === id) t.fromPocketId = "saving";
-            if (t.toPocketId === id) t.toPocketId = "saving";
+            if (t.fromPocketId === id) t.fromPocketId = POCKET_IDS.SAVING;
+            if (t.toPocketId === id) t.toPocketId = POCKET_IDS.SAVING;
         });
 
         updateRollovers();
@@ -303,6 +348,22 @@ export const useStore = defineStore("main", () => {
     }
 
     function resetMonth() {
+        if (transactions.value.length > 0) {
+            const archive = {
+                timestamp: Date.now(),
+                transactions: structuredClone(transactions.value),
+                pockets: structuredClone(pockets.value),
+                monthStart: monthStart.value,
+            };
+            try {
+                const archives = JSON.parse(localStorage.getItem(ARCHIVE_STORAGE_KEY) || "[]");
+                archives.push(archive);
+                if (archives.length > 6) archives.splice(0, archives.length - 6);
+                localStorage.setItem(ARCHIVE_STORAGE_KEY, JSON.stringify(archives));
+            } catch (e) {
+                console.warn("Failed to archive month data:", e);
+            }
+        }
         transactions.value = [];
         monthStart.value = Date.now();
         updateRollovers();
@@ -313,6 +374,7 @@ export const useStore = defineStore("main", () => {
         transactions,
         monthStart,
         isLoaded,
+        storageFailed,
         loadFromStorage,
         pocketBalances,
         totalAllocation,
