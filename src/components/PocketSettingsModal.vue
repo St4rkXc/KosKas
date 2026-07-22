@@ -122,7 +122,7 @@ function handleAddPocket() {
   store.addPocket(
     newPocketName.value.trim(),
     newPocketAllocation.value,
-    newPocketColor.class || newPocketColor.value,
+    newPocketColor.value,
     newPocketIcon.value
   );
   
@@ -159,48 +159,48 @@ function handleSaveAll() {
 
 <template>
   <Transition name="fade">
-    <div v-if="isOpen" class="fixed inset-0 bg-[#050505] bg-opacity-80 z-40" @click="$emit('close')"></div>
+    <div v-if="isOpen" class="fixed inset-0 bg-bg-primary bg-opacity-80 z-40" @click="$emit('close')"></div>
   </Transition>
 
   <Transition name="slide-up">
     <div
       v-if="isOpen"
-      class="fixed bottom-0 left-0 right-0 bg-[#121212] z-50 flex flex-col border-t border-[#1E1E1E]"
+      class="fixed bottom-0 left-0 right-0 bg-bg-surface z-50 flex flex-col border-t border-[#1E1E1E]"
       style="padding-bottom: env(safe-area-inset-bottom); height: 90vh"
     >
       <!-- Modal Header -->
       <div class="flex justify-between items-center p-6 border-b border-[#1E1E1E]">
-        <h2 class="text-[#FAFAFA] font-sans font-bold uppercase tracking-wider text-sm">Alokasi & Pengaturan Pocket</h2>
-        <button @click="$emit('close')" class="text-[#71717A] hover:text-white transition-colors">Batal</button>
+        <h2 class="text-text-primary font-sans font-bold uppercase tracking-wider text-sm">Alokasi & Pengaturan Pocket</h2>
+        <button @click="$emit('close')" class="text-text-muted hover:text-white transition-colors">Batal</button>
       </div>
 
       <!-- Main Content Area -->
       <div class="flex-1 overflow-y-auto p-6 space-y-6 no-scrollbar">
         
         <!-- Monthly Fund Section -->
-        <div class="bg-[#050505] p-5 rounded-[4px] border border-[#1E1E1E]">
+        <div class="bg-bg-primary p-5 rounded-sm border border-[#1E1E1E]">
           <div class="flex justify-between items-center mb-2">
-            <span class="text-[#71717A] text-[11px] uppercase font-bold tracking-wider">Total Saldo Bulanan (Income)</span>
+            <span class="text-text-muted text-[11px] uppercase font-bold tracking-wider">Total Saldo Bulanan (Income)</span>
           </div>
           
           <div v-if="editingId === 'monthly_fund'" class="flex gap-2">
-            <div class="flex-1 bg-[#121212] text-white font-mono text-xl p-2 rounded flex items-center justify-end">
+            <div class="flex-1 bg-bg-surface text-white font-mono text-xl p-2 rounded flex items-center justify-end">
               {{ parseInt(editValueStr, 10).toLocaleString('id-ID') }}
             </div>
             <button 
               @click="handleSaveField"
-              class="bg-[#10B981] text-black px-4 font-bold rounded uppercase text-xs"
+              class="bg-neon-safe text-black px-4 font-bold rounded uppercase text-xs"
             >
               Set
             </button>
           </div>
           <div v-else class="flex justify-between items-end">
-            <div class="text-[#10B981] font-mono text-3xl font-extrabold">
+            <div class="text-neon-safe font-mono text-3xl font-extrabold">
               {{ formatRupiah(monthlyFund) }}
             </div>
             <button 
               @click="handleMonthlyFundEditClick"
-              class="text-[#10B981] text-xs font-bold uppercase underline"
+              class="text-neon-safe text-xs font-bold uppercase underline"
             >
               Ubah Saldo
             </button>
@@ -208,21 +208,21 @@ function handleSaveAll() {
         </div>
 
         <!-- Allocation Status Warning if Overbudget -->
-        <div v-if="!isAllocationValid" class="bg-red-950/30 border border-red-500/50 p-4 rounded-[4px] flex items-center gap-3 text-red-400">
-          <AlertCircle :size="20" class="flex-shrink-0" />
+        <div v-if="!isAllocationValid" class="bg-red-950/30 border border-red-500/50 p-4 rounded-sm flex items-center gap-3 text-red-400">
+          <AlertCircle :size="20" class="shrink-0" />
           <div class="text-xs font-mono">
             Total alokasi ({{ formatRupiah(totalAllocatedExceptSaving) }}) melebihi Saldo Bulanan ({{ formatRupiah(monthlyFund) }}). Kurangi alokasi pocket Anda!
           </div>
         </div>
 
         <!-- Automatic saving allocation output -->
-        <div class="bg-[#1A1018] p-5 rounded-[4px] border border-[#EC4899]/30 flex justify-between items-center">
+        <div class="bg-[#1A1018] p-5 rounded-sm border border-[#EC4899]/30 flex justify-between items-center">
           <div>
             <div class="flex items-center gap-2 text-[#EC4899] text-[11px] uppercase font-bold tracking-wider">
               <PiggyBank :size="14" />
               Alokasi Tabungan (Saving)
             </div>
-            <div class="text-xs text-[#71717A] mt-1">Sisa saldo bulanan yang tidak dialokasikan</div>
+            <div class="text-xs text-text-muted mt-1">Sisa saldo bulanan yang tidak dialokasikan</div>
           </div>
           <div class="text-[#EC4899] font-mono text-2xl font-bold">
             {{ formatRupiah(calculatedSavingAllocation) }}
@@ -232,10 +232,10 @@ function handleSaveAll() {
         <!-- Pocket List -->
         <div class="space-y-3">
           <div class="flex justify-between items-center">
-            <h3 class="text-[#71717A] text-[11px] uppercase font-bold tracking-wider">Daftar Pockets</h3>
+            <h3 class="text-text-muted text-[11px] uppercase font-bold tracking-wider">Daftar Pockets</h3>
             <button 
               @click="showAddForm = !showAddForm"
-              class="flex items-center gap-1 text-xs text-[#10B981] uppercase font-bold"
+              class="flex items-center gap-1 text-xs text-neon-safe uppercase font-bold"
             >
               <Plus :size="14" /> {{ showAddForm ? 'Tutup' : 'Tambah Pocket' }}
             </button>
@@ -243,26 +243,26 @@ function handleSaveAll() {
 
           <!-- Add Pocket Form -->
           <Transition name="fade">
-            <div v-if="showAddForm" class="bg-[#050505] p-5 rounded-[4px] border border-[#1E1E1E] space-y-4">
+            <div v-if="showAddForm" class="bg-bg-primary p-5 rounded-sm border border-[#1E1E1E] space-y-4">
               <div>
-                <label class="text-[#71717A] text-[10px] uppercase font-bold block mb-1">Nama Pocket</label>
+                <label class="text-text-muted text-[10px] uppercase font-bold block mb-1">Nama Pocket</label>
                 <input 
                   v-model="newPocketName"
                   type="text"
                   placeholder="e.g. Belanja, Kado"
-                  class="w-full bg-[#121212] border border-[#1E1E1E] px-3 py-2 text-white text-sm rounded focus:outline-none focus:border-[#10B981]"
+                  class="w-full bg-bg-surface border border-[#1E1E1E] px-3 py-2 text-white text-sm rounded focus:outline-none focus:border-neon-safe"
                 />
               </div>
 
               <!-- Icon selector -->
               <div>
-                <label class="text-[#71717A] text-[10px] uppercase font-bold block mb-2">Pilih Icon</label>
+                <label class="text-text-muted text-[10px] uppercase font-bold block mb-2">Pilih Icon</label>
                 <div class="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
                   <button 
                     v-for="iconName in AVAILABLE_ICONS" 
                     :key="iconName"
                     @click="newPocketIcon = iconName"
-                    :class="['w-10 h-10 rounded flex items-center justify-center flex-shrink-0 transition-colors', newPocketIcon === iconName ? 'bg-[#10B981] text-black' : 'bg-[#121212] text-[#71717A] hover:bg-[#1E1E1E]']"
+                    :class="['w-10 h-10 rounded flex items-center justify-center shrink-0 transition-colors', newPocketIcon === iconName ? 'bg-neon-safe text-black' : 'bg-bg-surface text-text-muted hover:bg-[#1E1E1E]']"
                   >
                     <component :is="iconMap[iconName]" :size="18" />
                   </button>
@@ -271,13 +271,13 @@ function handleSaveAll() {
 
               <!-- Color selector -->
               <div>
-                <label class="text-[#71717A] text-[10px] uppercase font-bold block mb-2">Pilih Warna</label>
+                <label class="text-text-muted text-[10px] uppercase font-bold block mb-2">Pilih Warna</label>
                 <div class="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
                   <button 
                     v-for="color in AVAILABLE_COLORS" 
                     :key="color.name"
                     @click="newPocketColor = color.class"
-                    :class="['px-3 py-2 rounded flex-shrink-0 text-xs font-bold border transition-all', color.class, newPocketColor === color.class ? 'border-white scale-95' : 'border-transparent opacity-60']"
+                    :class="['px-3 py-2 rounded shrink-0 text-xs font-bold border transition-all', color.class, newPocketColor === color.class ? 'border-white scale-95' : 'border-transparent opacity-60']"
                   >
                     {{ color.name }}
                   </button>
@@ -287,7 +287,7 @@ function handleSaveAll() {
               <button 
                 @click="handleAddPocket"
                 :disabled="!newPocketName.trim()"
-                class="w-full bg-[#10B981] text-black font-bold uppercase tracking-wider py-2.5 rounded text-xs disabled:opacity-40 disabled:cursor-not-allowed"
+                class="w-full bg-neon-safe text-black font-bold uppercase tracking-wider py-2.5 rounded text-xs disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Buat Pocket Baru
               </button>
@@ -299,7 +299,7 @@ function handleSaveAll() {
             <div 
               v-for="pocket in store.pockets.filter(p => p.id !== 'saving' && p.id !== 'leftover')" 
               :key="pocket.id" 
-              class="bg-[#050505] p-4 rounded-[4px] border border-[#1E1E1E] flex flex-col gap-3"
+              class="bg-bg-primary p-4 rounded-sm border border-[#1E1E1E] flex flex-col gap-3"
             >
               <div class="flex justify-between items-center">
                 <div class="flex items-center gap-2.5">
@@ -308,40 +308,40 @@ function handleSaveAll() {
                   </div>
                   <div>
                     <span class="text-sm font-semibold text-white">{{ pocket.name }}</span>
-                    <span v-if="pocket.isSystem" class="text-[9px] text-[#71717A] ml-2 uppercase font-mono tracking-wider">System</span>
+                    <span v-if="pocket.isSystem" class="text-[9px] text-text-muted ml-2 uppercase font-mono tracking-wider">System</span>
                   </div>
                 </div>
                 
                 <button 
                   v-if="!pocket.isSystem"
                   @click="handleDeletePocket(pocket.id)"
-                  class="text-[#EF4444] hover:text-red-400 transition-colors p-1"
+                  class="text-neon-danger hover:text-red-400 transition-colors p-1"
                 >
                   <Trash2 :size="16" />
                 </button>
               </div>
 
               <div v-if="editingId === pocket.id" class="flex gap-2">
-                <div class="flex-1 bg-[#121212] text-white font-mono text-lg p-2 rounded flex items-center justify-end">
+                <div class="flex-1 bg-bg-surface text-white font-mono text-lg p-2 rounded flex items-center justify-end">
                   {{ parseInt(editValueStr, 10).toLocaleString('id-ID') }}
                 </div>
                 <button 
                   @click="handleSaveField"
-                  class="bg-[#10B981] text-black px-4 font-bold rounded uppercase text-xs"
+                  class="bg-neon-safe text-black px-4 font-bold rounded uppercase text-xs"
                 >
                   Set
                 </button>
               </div>
               <div v-else class="flex justify-between items-end">
                 <div>
-                  <div class="text-[#71717A] text-[9px] uppercase tracking-wider">Alokasi Bulanan</div>
+                  <div class="text-text-muted text-[9px] uppercase tracking-wider">Alokasi Bulanan</div>
                   <div class="text-white font-mono text-xl font-bold">
                     {{ formatRupiah(localAllocations[pocket.id] || 0) }}
                   </div>
                 </div>
                 <button 
                   @click="handleEditClick(pocket.id)"
-                  class="text-[#10B981] text-xs font-bold uppercase underline"
+                  class="text-neon-safe text-xs font-bold uppercase underline"
                 >
                   Ubah Alokasi
                 </button>
@@ -353,13 +353,13 @@ function handleSaveAll() {
 
       <!-- Numeric Keypad Area for allocations -->
       <Transition name="expand">
-        <div v-if="editingId" class="overflow-hidden bg-black flex-shrink-0 border-t border-[#1E1E1E]">
+        <div v-if="editingId" class="overflow-hidden bg-black shrink-0 border-t border-[#1E1E1E]">
           <div class="grid grid-cols-3 gap-1 p-1">
             <button
               v-for="key in ['1', '2', '3', '4', '5', '6', '7', '8', '9', '000', '0', 'DEL']"
               :key="key"
               @click="handleKeyPress(key)"
-              class="bg-[#121212] h-12 flex items-center justify-center text-xl font-mono font-bold active:bg-white active:text-black transition-colors text-white"
+              class="bg-bg-surface h-12 flex items-center justify-center text-xl font-mono font-bold active:bg-white active:text-black transition-colors text-white"
             >
               <template v-if="key === 'DEL'">
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 5H9l-7 7 7 7h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2Z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg>
@@ -373,11 +373,11 @@ function handleSaveAll() {
       </Transition>
 
       <!-- Save and Submit Actions -->
-      <div class="p-4 bg-[#121212] border-t border-[#1E1E1E]">
+      <div class="p-4 bg-bg-surface border-t border-[#1E1E1E]">
         <button
           @click="handleSaveAll"
           :disabled="!isAllocationValid"
-          :class="['w-full font-bold uppercase tracking-widest py-4 rounded-[4px] transition-colors', isAllocationValid ? 'bg-[#10B981] text-black active:bg-[#059669]' : 'bg-[#1E1E1E] text-[#71717A] cursor-not-allowed']"
+          :class="['w-full font-bold uppercase tracking-widest py-4 rounded-sm transition-colors', isAllocationValid ? 'bg-neon-safe text-black active:bg-[#059669]' : 'bg-[#1E1E1E] text-text-muted cursor-not-allowed']"
         >
           Simpan Alokasi
         </button>
