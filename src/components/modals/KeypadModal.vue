@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
-import { formatRupiah, vibrate, parseAmount } from "../types";
-import { useStore } from "../store";
+import { formatRupiah, vibrate, parseAmount } from "../../types";
+import { useStore } from "../../store";
 
 const props = defineProps<{
     isOpen: boolean;

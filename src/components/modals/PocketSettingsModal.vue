@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue';
 import { Trash2, Plus, AlertCircle, PiggyBank } from 'lucide-vue-next';
-import { AVAILABLE_ICONS, AVAILABLE_COLORS, formatRupiah, vibrate, parseAmount } from '../types';
-import { useStore } from '../store';
-import { resolveIcon } from '../iconMap';
+import { AVAILABLE_ICONS, AVAILABLE_COLORS, formatRupiah, vibrate, parseAmount } from '../../types';
+import { useStore } from '../../store';
+import { resolveIcon } from '../../iconMap';
 
 const props = defineProps<{
     isOpen: boolean;

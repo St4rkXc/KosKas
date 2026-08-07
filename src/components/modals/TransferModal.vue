@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
 import { ArrowLeftRight } from "lucide-vue-next";
-import { formatRupiah, vibrate, parseAmount } from "../types";
-import { useStore } from "../store";
-import { resolveIcon } from "../iconMap";
+import { formatRupiah, vibrate, parseAmount } from "../../types";
+import { useStore } from "../../store";
+import { resolveIcon } from "../../iconMap";
 
 const props = defineProps<{
     isOpen: boolean;
