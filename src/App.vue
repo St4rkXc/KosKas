@@ -45,8 +45,17 @@ async function handleAuth() {
         } else {
             await signIn(email.value, password.value);
         }
-    } catch (e: unknown) {
-        authError.value = e instanceof Error ? e.message : 'Auth failed';
+    } catch (e: any) {
+        const msg = e?.message || 'Authentication failed';
+        if (msg.includes('Invalid login credentials')) {
+            authError.value = 'Invalid email or password.';
+        } else if (msg.includes('User already registered')) {
+            authError.value = 'An account with this email already exists.';
+        } else if (msg.includes('Email not confirmed')) {
+            authError.value = 'Please confirm your email address before signing in.';
+        } else {
+            authError.value = msg;
+        }
     }
 }
 
@@ -54,8 +63,8 @@ async function handleGoogleAuth() {
     authError.value = '';
     try {
         await signInWithGoogle();
-    } catch (e: unknown) {
-        authError.value = e instanceof Error ? e.message : 'Google sign-in failed';
+    } catch (e: any) {
+        authError.value = e?.message || 'Google sign-in failed.';
     }
 }
 
@@ -366,12 +375,17 @@ function formatDateTime(timestamp: number) {
         <div v-if="store.storageFailed" class="fixed top-0 left-0 right-0 z-50 bg-neon-danger/20 border-b border-neon-danger px-4 py-2 text-center">
             <span class="text-neon-danger text-xs font-mono">⚠ Storage unavailable — data will be lost when you close this tab</span>
         </div>
+        <div v-else-if="store.syncFailed" class="fixed top-0 left-0 right-0 z-50 bg-amber-500/20 border-b border-amber-500/40 px-4 py-2 text-center">
+            <span class="text-amber-400 text-xs font-mono">⚠ Supabase sync failed — changes saved locally, retrying automatically</span>
+        </div>
 
         <div class="absolute top-4 left-0 w-full px-6 sm:px-10 flex justify-between z-20 pointer-events-none">
             <div class="font-mono text-[10px] text-text-muted">V3.2-TACTICAL • {{ currentDateStr }}</div>
             <div class="font-mono text-[10px] text-text-muted hidden sm:flex gap-2 items-center">
                 <span>DISK: 14%</span>
-                <span>SYNC: OK</span>
+                <span v-if="store.isSyncing" class="text-neon-safe animate-pulse">SYNC: SYNCING...</span>
+                <span v-else-if="store.syncFailed" class="text-amber-400">SYNC: OFFLINE</span>
+                <span v-else>SYNC: OK</span>
                 <span>OLED: ON</span>
                 <button @click="signOut" class="pointer-events-auto flex items-center gap-1 text-text-muted hover:text-neon-danger transition-colors ml-2">
                     <LogOut :size="10" /> Sign Out

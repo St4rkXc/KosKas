@@ -6,6 +6,8 @@ const user = ref<User | null>(null);
 const session = ref<Session | null>(null);
 const loading = ref(true);
 
+let authSubscription: { unsubscribe: () => void } | null = null;
+
 export function useAuth() {
   async function initAuth() {
     const { data: { session: currentSession } } = await supabase.auth.getSession();
@@ -13,13 +15,22 @@ export function useAuth() {
     user.value = currentSession?.user ?? null;
     loading.value = false;
 
-    supabase.auth.onAuthStateChange((_event, newSession) => {
+    if (authSubscription) {
+      authSubscription.unsubscribe();
+      authSubscription = null;
+    }
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
       session.value = newSession;
       user.value = newSession?.user ?? null;
     });
+    authSubscription = subscription;
   }
 
   async function signUp(email: string, password: string) {
+    if (!password || password.length < 8) {
+      throw new Error('Password must be at least 8 characters long');
+    }
     const { error } = await supabase.auth.signUp({ email, password });
     if (error) throw error;
   }

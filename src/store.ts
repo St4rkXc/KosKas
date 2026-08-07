@@ -7,6 +7,8 @@ import {
     fetchTransactions,
     upsertAllPockets,
     syncAllTransactions,
+    deleteTransactionRemote,
+    deleteAllTransactionsRemote,
 } from "./services/sync";
 
 const TRANSACTION_STORAGE_KEY = "koskas_transactions";
@@ -25,7 +27,9 @@ export const useStore = defineStore("main", () => {
     const storageFailed = ref(false);
     const syncEnabled = ref(false);
     const userId = ref<string | null>(null);
-    let suppressWatch = false;
+    const syncFailed = ref(false);
+    const isSyncing = ref(false);
+    const suppressWatch = ref(false);
 
     function persistToStorage() {
         try {
@@ -173,8 +177,10 @@ export const useStore = defineStore("main", () => {
                     .single();
 
                 monthStart.value = profile?.month_start ?? Date.now();
+                syncFailed.value = false;
             } catch (err) {
                 console.error('Supabase fetch failed, falling back to localStorage:', err);
+                syncFailed.value = true;
                 loadFromLocalStorage();
             }
         } else {
@@ -185,19 +191,35 @@ export const useStore = defineStore("main", () => {
         updateRollovers();
     }
 
+    let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
     watch(
         [transactions, pockets, monthStart, isLoaded],
-        async () => {
-            if (!isLoaded.value || suppressWatch) return;
+        () => {
+            if (!isLoaded.value || suppressWatch.value) return;
             persistToStorage();
 
             if (syncEnabled.value && userId.value) {
-                try {
-                    await upsertAllPockets(userId.value, pockets.value);
-                    await syncAllTransactions(userId.value, transactions.value);
-                } catch (err) {
-                    console.warn('Supabase sync failed (offline?):', err);
-                }
+                if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
+                syncDebounceTimer = setTimeout(async () => {
+                    if (!userId.value) return;
+                    isSyncing.value = true;
+                    try {
+                        await Promise.all([
+                            upsertAllPockets(userId.value, pockets.value),
+                            syncAllTransactions(userId.value, transactions.value),
+                            supabase
+                                .from('profiles')
+                                .upsert({ id: userId.value, month_start: monthStart.value, updated_at: new Date().toISOString() }),
+                        ]);
+                        syncFailed.value = false;
+                    } catch (err) {
+                        console.warn('Supabase sync failed (offline?):', err);
+                        syncFailed.value = true;
+                    } finally {
+                        isSyncing.value = false;
+                    }
+                }, 300);
             }
         },
         { deep: true },
@@ -242,7 +264,7 @@ export const useStore = defineStore("main", () => {
     }
 
     function updateRollovers() {
-        suppressWatch = true;
+        suppressWatch.value = true;
         try {
             const now = new Date();
             const year = now.getFullYear();
@@ -303,7 +325,7 @@ export const useStore = defineStore("main", () => {
                 }
             }
         } finally {
-            suppressWatch = false;
+            suppressWatch.value = false;
         }
         persistToStorage();
     }
@@ -353,6 +375,11 @@ export const useStore = defineStore("main", () => {
 
     function removeTransaction(id: string) {
         transactions.value = transactions.value.filter((t) => t.id !== id);
+        if (syncEnabled.value && userId.value) {
+            deleteTransactionRemote(userId.value, id).catch((err) => {
+                console.warn("Failed to delete transaction remotely:", err);
+            });
+        }
         updateRollovers();
     }
 
@@ -423,12 +450,12 @@ export const useStore = defineStore("main", () => {
         updateRollovers();
     }
 
-    function resetMonth() {
+    async function resetMonth() {
         if (transactions.value.length > 0) {
             const archive = {
                 timestamp: Date.now(),
-                transactions: structuredClone(transactions.value),
-                pockets: structuredClone(pockets.value),
+                transactions: JSON.parse(JSON.stringify(transactions.value)),
+                pockets: JSON.parse(JSON.stringify(pockets.value)),
                 monthStart: monthStart.value,
             };
             try {
@@ -442,6 +469,13 @@ export const useStore = defineStore("main", () => {
         }
         transactions.value = [];
         monthStart.value = Date.now();
+        if (syncEnabled.value && userId.value) {
+            try {
+                await deleteAllTransactionsRemote(userId.value);
+            } catch (e) {
+                console.warn("Failed to delete all transactions remotely:", e);
+            }
+        }
         updateRollovers();
     }
 
@@ -451,6 +485,9 @@ export const useStore = defineStore("main", () => {
         monthStart,
         isLoaded,
         storageFailed,
+        syncFailed,
+        isSyncing,
+        syncEnabled,
         loadFromStorage,
         pocketBalances,
         totalAllocation,

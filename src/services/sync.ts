@@ -71,6 +71,14 @@ export async function deleteTransactionRemote(userId: string, txId: string) {
   if (error) throw error;
 }
 
+export async function deleteAllTransactionsRemote(userId: string) {
+  const { error } = await supabase
+    .from('transactions')
+    .delete()
+    .eq('user_id', userId);
+  if (error) throw error;
+}
+
 export async function upsertAllPockets(userId: string, pockets: Pocket[]) {
   const rows = pockets.map(p => ({
     id: p.id,
