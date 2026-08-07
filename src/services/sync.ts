@@ -1,5 +1,9 @@
 import { supabase } from '@/lib/supabase';
 import type { Pocket, Transaction } from '@/types';
+import type { Database } from '@/types/supabase';
+
+type PocketRow = Database['public']['Tables']['pockets']['Row'];
+type TransactionRow = Database['public']['Tables']['transactions']['Row'];
 
 export async function fetchPockets(userId: string): Promise<Pocket[]> {
   const { data, error } = await supabase
@@ -12,12 +16,13 @@ export async function fetchPockets(userId: string): Promise<Pocket[]> {
   return (data ?? []).map(mapRowToPocket);
 }
 
-export async function fetchTransactions(userId: string): Promise<Transaction[]> {
+export async function fetchTransactions(userId: string, limit = 1000): Promise<Transaction[]> {
   const { data, error } = await supabase
     .from('transactions')
     .select('*')
     .eq('user_id', userId)
-    .order('timestamp', { ascending: false });
+    .order('timestamp', { ascending: false })
+    .limit(limit);
 
   if (error) throw error;
   return (data ?? []).map(mapRowToTransaction);
@@ -116,27 +121,27 @@ export async function syncAllTransactions(userId: string, txs: Transaction[]) {
   }
 }
 
-function mapRowToPocket(row: Record<string, unknown>): Pocket {
+function mapRowToPocket(row: PocketRow): Pocket {
   return {
-    id: row.id as string,
-    name: row.name as string,
+    id: row.id,
+    name: row.name,
     allocation: Number(row.allocation),
-    colorClass: row.color_class as string,
-    icon: row.icon as string,
-    isSystem: row.is_system as boolean,
+    colorClass: row.color_class,
+    icon: row.icon,
+    isSystem: row.is_system ?? false,
   };
 }
 
-function mapRowToTransaction(row: Record<string, unknown>): Transaction {
+function mapRowToTransaction(row: TransactionRow): Transaction {
   return {
-    id: row.id as string,
+    id: row.id,
     type: row.type as 'expense' | 'transfer',
-    fromPocketId: (row.from_pocket_id as string) ?? undefined,
-    toPocketId: (row.to_pocket_id as string) ?? undefined,
+    fromPocketId: row.from_pocket_id ?? undefined,
+    toPocketId: row.to_pocket_id ?? undefined,
     amount: Number(row.amount),
     timestamp: Number(row.timestamp),
-    note: (row.note as string) ?? undefined,
-    isRollover: (row.is_rollover as boolean) ?? undefined,
-    rolloverDate: (row.rollover_date as string) ?? undefined,
+    note: row.note ?? undefined,
+    isRollover: row.is_rollover ?? undefined,
+    rolloverDate: row.rollover_date ?? undefined,
   };
 }
