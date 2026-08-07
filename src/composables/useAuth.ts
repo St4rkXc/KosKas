@@ -1,4 +1,4 @@
-import { ref, readonly } from 'vue';
+import { ref, readonly, watch } from 'vue';
 import { supabase } from '@/lib/supabase';
 import type { User, Session } from '@supabase/supabase-js';
 
@@ -7,6 +7,11 @@ const session = ref<Session | null>(null);
 const loading = ref(true);
 
 let authSubscription: { unsubscribe: () => void } | null = null;
+let onUserChangeCallback: ((userId: string | null) => void) | null = null;
+
+export function onUserChange(cb: (userId: string | null) => void) {
+  onUserChangeCallback = cb;
+}
 
 export function useAuth() {
   async function initAuth() {
@@ -21,8 +26,13 @@ export function useAuth() {
     }
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      const prevUser = user.value?.id ?? null;
       session.value = newSession;
       user.value = newSession?.user ?? null;
+      const newUser = user.value?.id ?? null;
+      if (prevUser !== newUser && onUserChangeCallback) {
+        onUserChangeCallback(newUser);
+      }
     });
     authSubscription = subscription;
   }
