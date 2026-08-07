@@ -1,6 +1,13 @@
 import { defineStore } from "pinia";
 import { ref, computed, watch } from "vue";
 import { Pocket, Transaction, DEFAULT_POCKETS, POCKET_IDS, generateId, isValidPocket, isValidTransaction } from "./types";
+import { supabase } from "./lib/supabase";
+import {
+    fetchPockets,
+    fetchTransactions,
+    upsertAllPockets,
+    syncAllTransactions,
+} from "./services/sync";
 
 const TRANSACTION_STORAGE_KEY = "koskas_transactions";
 const POCKET_STORAGE_KEY = "koskas_pockets";
@@ -16,6 +23,8 @@ export const useStore = defineStore("main", () => {
     const monthStart = ref<number>(Date.now());
     const isLoaded = ref(false);
     const storageFailed = ref(false);
+    const syncEnabled = ref(false);
+    const userId = ref<string | null>(null);
     let suppressWatch = false;
 
     function persistToStorage() {
@@ -30,7 +39,7 @@ export const useStore = defineStore("main", () => {
         }
     }
 
-    function loadFromStorage() {
+    function loadFromLocalStorage() {
         const storedTransactions = localStorage.getItem(TRANSACTION_STORAGE_KEY);
         const storedPockets = localStorage.getItem(POCKET_STORAGE_KEY);
         const storedMonthStart = localStorage.getItem(MONTH_START_KEY);
@@ -113,6 +122,64 @@ export const useStore = defineStore("main", () => {
                 }
             }
         }
+    }
+
+    async function loadFromStorage() {
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (session?.user) {
+            userId.value = session.user.id;
+            syncEnabled.value = true;
+
+            try {
+                const [remotePockets, remoteTransactions] = await Promise.all([
+                    fetchPockets(session.user.id),
+                    fetchTransactions(session.user.id),
+                ]);
+
+                if (remotePockets.length > 0) {
+                    pockets.value = remotePockets;
+                } else {
+                    pockets.value = structuredClone(DEFAULT_POCKETS);
+                    await upsertAllPockets(session.user.id, pockets.value);
+                }
+
+                if (remoteTransactions.length > 0) {
+                    transactions.value = remoteTransactions;
+                } else {
+                    const localTxs = localStorage.getItem(TRANSACTION_STORAGE_KEY);
+                    if (localTxs) {
+                        try {
+                            const parsed = JSON.parse(localTxs);
+                            if (Array.isArray(parsed) && parsed.every(isValidTransaction)) {
+                                transactions.value = parsed;
+                                await syncAllTransactions(session.user.id, transactions.value);
+                            }
+                        } catch {
+                            transactions.value = [];
+                        }
+                    } else {
+                        transactions.value = [];
+                    }
+                    localStorage.removeItem(TRANSACTION_STORAGE_KEY);
+                    localStorage.removeItem(POCKET_STORAGE_KEY);
+                    localStorage.removeItem(MONTH_START_KEY);
+                }
+
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('month_start')
+                    .eq('id', session.user.id)
+                    .single();
+
+                monthStart.value = profile?.month_start ?? Date.now();
+            } catch (err) {
+                console.error('Supabase fetch failed, falling back to localStorage:', err);
+                loadFromLocalStorage();
+            }
+        } else {
+            loadFromLocalStorage();
+        }
 
         isLoaded.value = true;
         updateRollovers();
@@ -120,9 +187,18 @@ export const useStore = defineStore("main", () => {
 
     watch(
         [transactions, pockets, monthStart, isLoaded],
-        () => {
+        async () => {
             if (!isLoaded.value || suppressWatch) return;
             persistToStorage();
+
+            if (syncEnabled.value && userId.value) {
+                try {
+                    await upsertAllPockets(userId.value, pockets.value);
+                    await syncAllTransactions(userId.value, transactions.value);
+                } catch (err) {
+                    console.warn('Supabase sync failed (offline?):', err);
+                }
+            }
         },
         { deep: true },
     );
