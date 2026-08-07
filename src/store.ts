@@ -1,6 +1,15 @@
 import { defineStore } from "pinia";
 import { ref, computed, watch } from "vue";
 import { Pocket, Transaction, DEFAULT_POCKETS, POCKET_IDS, generateId, isValidPocket, isValidTransaction } from "./types";
+import { supabase } from "./lib/supabase";
+import {
+    fetchPockets,
+    fetchTransactions,
+    upsertAllPockets,
+    syncAllTransactions,
+    deleteTransactionRemote,
+    deleteAllTransactionsRemote,
+} from "./services/sync";
 
 const TRANSACTION_STORAGE_KEY = "koskas_transactions";
 const POCKET_STORAGE_KEY = "koskas_pockets";
@@ -16,7 +25,11 @@ export const useStore = defineStore("main", () => {
     const monthStart = ref<number>(Date.now());
     const isLoaded = ref(false);
     const storageFailed = ref(false);
-    let suppressWatch = false;
+    const syncEnabled = ref(false);
+    const userId = ref<string | null>(null);
+    const syncFailed = ref(false);
+    const isSyncing = ref(false);
+    const suppressWatch = ref(false);
 
     function persistToStorage() {
         try {
@@ -30,7 +43,7 @@ export const useStore = defineStore("main", () => {
         }
     }
 
-    function loadFromStorage() {
+    function loadFromLocalStorage() {
         const storedTransactions = localStorage.getItem(TRANSACTION_STORAGE_KEY);
         const storedPockets = localStorage.getItem(POCKET_STORAGE_KEY);
         const storedMonthStart = localStorage.getItem(MONTH_START_KEY);
@@ -113,16 +126,111 @@ export const useStore = defineStore("main", () => {
                 }
             }
         }
+    }
+
+    async function loadFromStorage() {
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (session?.user) {
+            userId.value = session.user.id;
+            syncEnabled.value = true;
+
+            try {
+                const [remotePockets, remoteTransactions] = await Promise.all([
+                    fetchPockets(session.user.id),
+                    fetchTransactions(session.user.id),
+                ]);
+
+                if (remotePockets.length > 0) {
+                    pockets.value = remotePockets;
+                } else {
+                    pockets.value = structuredClone(DEFAULT_POCKETS);
+                    await upsertAllPockets(session.user.id, pockets.value);
+                }
+
+                if (remoteTransactions.length > 0) {
+                    transactions.value = remoteTransactions;
+                } else {
+                    const localTxs = localStorage.getItem(TRANSACTION_STORAGE_KEY);
+                    if (localTxs) {
+                        try {
+                            const parsed = JSON.parse(localTxs);
+                            if (Array.isArray(parsed) && parsed.every(isValidTransaction)) {
+                                transactions.value = parsed;
+                                await syncAllTransactions(session.user.id, transactions.value);
+                            }
+                        } catch {
+                            transactions.value = [];
+                        }
+                    } else {
+                        transactions.value = [];
+                    }
+                    localStorage.removeItem(TRANSACTION_STORAGE_KEY);
+                    localStorage.removeItem(POCKET_STORAGE_KEY);
+                    localStorage.removeItem(MONTH_START_KEY);
+                }
+
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('month_start')
+                    .eq('id', session.user.id)
+                    .single();
+
+                monthStart.value = profile?.month_start ?? Date.now();
+                syncFailed.value = false;
+            } catch (err) {
+                console.error('Supabase fetch failed, falling back to localStorage:', err);
+                syncFailed.value = true;
+                loadFromLocalStorage();
+            }
+        } else {
+            loadFromLocalStorage();
+        }
 
         isLoaded.value = true;
         updateRollovers();
     }
 
+    let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    function syncToSupabase() {
+        if (!syncEnabled.value || !userId.value) return;
+        if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
+        syncDebounceTimer = setTimeout(async () => {
+            if (!userId.value) return;
+            isSyncing.value = true;
+            try {
+                await Promise.all([
+                    upsertAllPockets(userId.value, pockets.value),
+                    syncAllTransactions(userId.value, transactions.value),
+                    supabase
+                        .from('profiles')
+                        .upsert({ id: userId.value, month_start: monthStart.value, updated_at: new Date().toISOString() }),
+                ]);
+                syncFailed.value = false;
+            } catch (err) {
+                console.warn('Supabase sync failed (offline?):', err);
+                syncFailed.value = true;
+            } finally {
+                isSyncing.value = false;
+            }
+        }, 300);
+    }
+
+    if (typeof window !== 'undefined') {
+        window.addEventListener('online', () => {
+            if (syncEnabled.value && userId.value && syncFailed.value) {
+                syncToSupabase();
+            }
+        });
+    }
+
     watch(
         [transactions, pockets, monthStart, isLoaded],
         () => {
-            if (!isLoaded.value || suppressWatch) return;
+            if (!isLoaded.value || suppressWatch.value) return;
             persistToStorage();
+            syncToSupabase();
         },
         { deep: true },
     );
@@ -166,7 +274,7 @@ export const useStore = defineStore("main", () => {
     }
 
     function updateRollovers() {
-        suppressWatch = true;
+        suppressWatch.value = true;
         try {
             const now = new Date();
             const year = now.getFullYear();
@@ -227,7 +335,7 @@ export const useStore = defineStore("main", () => {
                 }
             }
         } finally {
-            suppressWatch = false;
+            suppressWatch.value = false;
         }
         persistToStorage();
     }
@@ -277,6 +385,11 @@ export const useStore = defineStore("main", () => {
 
     function removeTransaction(id: string) {
         transactions.value = transactions.value.filter((t) => t.id !== id);
+        if (syncEnabled.value && userId.value) {
+            deleteTransactionRemote(userId.value, id).catch((err) => {
+                console.warn("Failed to delete transaction remotely:", err);
+            });
+        }
         updateRollovers();
     }
 
@@ -347,12 +460,12 @@ export const useStore = defineStore("main", () => {
         updateRollovers();
     }
 
-    function resetMonth() {
+    async function resetMonth() {
         if (transactions.value.length > 0) {
             const archive = {
                 timestamp: Date.now(),
-                transactions: structuredClone(transactions.value),
-                pockets: structuredClone(pockets.value),
+                transactions: JSON.parse(JSON.stringify(transactions.value)),
+                pockets: JSON.parse(JSON.stringify(pockets.value)),
                 monthStart: monthStart.value,
             };
             try {
@@ -366,6 +479,13 @@ export const useStore = defineStore("main", () => {
         }
         transactions.value = [];
         monthStart.value = Date.now();
+        if (syncEnabled.value && userId.value) {
+            try {
+                await deleteAllTransactionsRemote(userId.value);
+            } catch (e) {
+                console.warn("Failed to delete all transactions remotely:", e);
+            }
+        }
         updateRollovers();
     }
 
@@ -375,6 +495,9 @@ export const useStore = defineStore("main", () => {
         monthStart,
         isLoaded,
         storageFailed,
+        syncFailed,
+        isSyncing,
+        syncEnabled,
         loadFromStorage,
         pocketBalances,
         totalAllocation,

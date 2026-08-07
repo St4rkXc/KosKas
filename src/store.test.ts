@@ -45,7 +45,7 @@ describe('useStore', () => {
   // ─── loadFromStorage ─────────────────────────────────────────────
 
   describe('loadFromStorage', () => {
-    it('should load pockets and transactions from localStorage', () => {
+    it('should load pockets and transactions from localStorage', async () => {
       const testPockets = [
         {
           id: 'test',
@@ -70,7 +70,7 @@ describe('useStore', () => {
       mockLs.setItem('koskas_month_start', '1700000000000');
 
       const store = useStore();
-      store.loadFromStorage();
+      await store.loadFromStorage();
 
       expect(store.pockets).toHaveLength(1);
       expect(store.pockets[0].id).toBe('test');
@@ -80,59 +80,59 @@ describe('useStore', () => {
       expect(store.isLoaded).toBe(true);
     });
 
-    it('should use default pockets when localStorage is empty', () => {
+    it('should use default pockets when localStorage is empty', async () => {
       const store = useStore();
-      store.loadFromStorage();
+      await store.loadFromStorage();
 
       expect(store.pockets).toHaveLength(DEFAULT_POCKETS.length);
       expect(store.pockets[0].id).toBe(POCKET_IDS.PANGAN);
       expect(store.isLoaded).toBe(true);
     });
 
-    it('should fall back to defaults when pocket data is corrupt JSON', () => {
+    it('should fall back to defaults when pocket data is corrupt JSON', async () => {
       mockLs.setItem('koskas_pockets', 'NOT VALID JSON{{{');
       const store = useStore();
-      store.loadFromStorage();
+      await store.loadFromStorage();
 
       expect(store.pockets).toHaveLength(DEFAULT_POCKETS.length);
       expect(store.isLoaded).toBe(true);
     });
 
-    it('should fall back to defaults when pocket data is not an array', () => {
+    it('should fall back to defaults when pocket data is not an array', async () => {
       mockLs.setItem('koskas_pockets', JSON.stringify({ not: 'an array' }));
       const store = useStore();
-      store.loadFromStorage();
+      await store.loadFromStorage();
 
       expect(store.pockets).toHaveLength(DEFAULT_POCKETS.length);
     });
 
-    it('should fall back to defaults when pocket data fails schema validation', () => {
+    it('should fall back to defaults when pocket data fails schema validation', async () => {
       const badPockets = [{ id: 123, name: 'Bad' }];
       mockLs.setItem('koskas_pockets', JSON.stringify(badPockets));
       const store = useStore();
-      store.loadFromStorage();
+      await store.loadFromStorage();
 
       expect(store.pockets).toHaveLength(DEFAULT_POCKETS.length);
     });
 
-    it('should use empty array when transaction data is corrupt JSON', () => {
+    it('should use empty array when transaction data is corrupt JSON', async () => {
       mockLs.setItem('koskas_transactions', 'BROKEN JSON');
       const store = useStore();
-      store.loadFromStorage();
+      await store.loadFromStorage();
 
       expect(store.transactions).toEqual([]);
     });
 
-    it('should use empty array when transaction data fails schema validation', () => {
+    it('should use empty array when transaction data fails schema validation', async () => {
       const badTx = [{ id: 123, type: 'invalid' }];
       mockLs.setItem('koskas_transactions', JSON.stringify(badTx));
       const store = useStore();
-      store.loadFromStorage();
+      await store.loadFromStorage();
 
       expect(store.transactions).toEqual([]);
     });
 
-    it('should migrate legacy expenses when no modern transactions exist', () => {
+    it('should migrate legacy expenses when no modern transactions exist', async () => {
       const legacyExpenses = [
         {
           id: 'legacy-1',
@@ -145,7 +145,7 @@ describe('useStore', () => {
       mockLs.setItem('koskas_expenses', JSON.stringify(legacyExpenses));
 
       const store = useStore();
-      store.loadFromStorage();
+      await store.loadFromStorage();
 
       expect(store.transactions).toHaveLength(1);
       expect(store.transactions[0].type).toBe('expense');
@@ -153,7 +153,7 @@ describe('useStore', () => {
       expect(store.transactions[0].amount).toBe(25000);
     });
 
-    it('should migrate legacy budgets to pocket allocations', () => {
+    it('should migrate legacy budgets to pocket allocations', async () => {
       const legacyBudgets = {
         pangan: 2000000,
         kos: 1500000,
@@ -162,7 +162,7 @@ describe('useStore', () => {
       mockLs.setItem('koskas_budgets', JSON.stringify(legacyBudgets));
 
       const store = useStore();
-      store.loadFromStorage();
+      await store.loadFromStorage();
 
       const pangan = store.pockets.find((p) => p.id === 'pangan');
       const kos = store.pockets.find((p) => p.id === 'kos');
@@ -173,7 +173,7 @@ describe('useStore', () => {
       expect(lifestyle?.allocation).toBe(500000);
     });
 
-    it('should handle legacy expenses with missing fields gracefully', () => {
+    it('should handle legacy expenses with missing fields gracefully', async () => {
       const legacyExpenses = [
         { amount: 10000, timestamp: 1700000000000 },
         { id: 'good', categoryId: 'kos', amount: 20000, timestamp: 1700000000000 },
@@ -181,7 +181,7 @@ describe('useStore', () => {
       mockLs.setItem('koskas_expenses', JSON.stringify(legacyExpenses));
 
       const store = useStore();
-      store.loadFromStorage();
+      await store.loadFromStorage();
 
       // The first expense gets a generated ID and undefined fromPocketId,
       // but fromPocketId is optional so it passes isValidTransaction.
@@ -194,26 +194,26 @@ describe('useStore', () => {
       expect(generated?.fromPocketId).toBeUndefined();
     });
 
-    it('should parse monthStart correctly from localStorage', () => {
+    it('should parse monthStart correctly from localStorage', async () => {
       mockLs.setItem('koskas_month_start', '1609459200000');
       const store = useStore();
-      store.loadFromStorage();
+      await store.loadFromStorage();
       expect(store.monthStart).toBe(1609459200000);
     });
 
-    it('should default monthStart to Date.now() when not stored', () => {
+    it('should default monthStart to Date.now() when not stored', async () => {
       const before = Date.now();
       const store = useStore();
-      store.loadFromStorage();
+      await store.loadFromStorage();
       const after = Date.now();
       expect(store.monthStart).toBeGreaterThanOrEqual(before);
       expect(store.monthStart).toBeLessThanOrEqual(after);
     });
 
-    it('should default monthStart to Date.now() when stored value is NaN', () => {
+    it('should default monthStart to Date.now() when stored value is NaN', async () => {
       mockLs.setItem('koskas_month_start', 'not-a-number');
       const store = useStore();
-      store.loadFromStorage();
+      await store.loadFromStorage();
       expect(Number.isFinite(store.monthStart)).toBe(true);
     });
   });
@@ -221,32 +221,32 @@ describe('useStore', () => {
   // ─── Persistence & Watcher ───────────────────────────────────────
 
   describe('persistence and watcher', () => {
-    it('should persist state to localStorage after loadFromStorage calls updateRollovers', () => {
+    it('should persist state to localStorage after loadFromStorage calls updateRollovers', async () => {
       const store = useStore();
-      store.loadFromStorage();
+      await store.loadFromStorage();
 
       // updateRollovers calls persistToStorage directly
       const setItemSpy = (globalThis as any).__setItemSpy();
       expect(setItemSpy).toHaveBeenCalled();
     });
 
-    it('should set storageFailed = true when localStorage throws', () => {
+    it('should set storageFailed = true when localStorage throws', async () => {
       const setItemSpy = (globalThis as any).__setItemSpy();
       setItemSpy.mockImplementation(() => {
         throw new Error('Quota exceeded');
       });
 
       const store = useStore();
-      store.loadFromStorage();
+      await store.loadFromStorage();
 
       expect(store.storageFailed).toBe(true);
     });
 
-    it('should reset storageFailed to false on successful persist', () => {
+    it('should reset storageFailed to false on successful persist', async () => {
       const store = useStore();
       // First simulate a failure by setting the flag
       (store as any).storageFailed = true;
-      store.loadFromStorage();
+      await store.loadFromStorage();
       // After successful load + persist, flag should be false
       expect(store.storageFailed).toBe(false);
     });
@@ -1255,10 +1255,10 @@ describe('useStore', () => {
   // ─── Regression: Watcher Feedback Loop ───────────────────────────
 
   describe('regression: watcher feedback loop', () => {
-    it('should not cause excessive localStorage writes during addExpense', () => {
+    it('should not cause excessive localStorage writes during addExpense', async () => {
       const store = useStore();
       store.pockets = structuredClone(DEFAULT_POCKETS);
-      store.loadFromStorage();
+      await store.loadFromStorage();
 
       // Clear any calls from loadFromStorage
       const setItemSpy = (globalThis as any).__setItemSpy();
@@ -1279,10 +1279,10 @@ describe('useStore', () => {
       }
     });
 
-    it('should suppress watcher during updateRollovers to prevent feedback', () => {
+    it('should suppress watcher during updateRollovers to prevent feedback', async () => {
       const store = useStore();
       store.pockets = structuredClone(DEFAULT_POCKETS);
-      store.loadFromStorage();
+      await store.loadFromStorage();
 
       const setItemSpy = (globalThis as any).__setItemSpy();
       setItemSpy.mockClear();
@@ -1301,10 +1301,10 @@ describe('useStore', () => {
   // ─── Regression: Schema Validation ───────────────────────────────
 
   describe('regression: schema validation prevents NaN', () => {
-    it('should not produce NaN in pockets when data is corrupt', () => {
+    it('should not produce NaN in pockets when data is corrupt', async () => {
       mockLs.setItem('koskas_pockets', JSON.stringify([{ id: null, allocation: 'bad' }]));
       const store = useStore();
-      store.loadFromStorage();
+      await store.loadFromStorage();
 
       // Should use defaults, not corrupt data
       store.pockets.forEach((p) => {
@@ -1313,10 +1313,10 @@ describe('useStore', () => {
       });
     });
 
-    it('should not produce NaN in transactions when data is corrupt', () => {
+    it('should not produce NaN in transactions when data is corrupt', async () => {
       mockLs.setItem('koskas_transactions', JSON.stringify([{ amount: 'not a number' }]));
       const store = useStore();
-      store.loadFromStorage();
+      await store.loadFromStorage();
 
       expect(store.transactions).toEqual([]);
     });
