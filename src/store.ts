@@ -10,6 +10,7 @@ import {
     deleteTransactionRemote,
     deleteAllTransactionsRemote,
 } from "./services/sync";
+import { onUserChange } from "./composables/useAuth";
 
 const TRANSACTION_STORAGE_KEY = "koskas_transactions";
 const POCKET_STORAGE_KEY = "koskas_pockets";
@@ -488,6 +489,32 @@ export const useStore = defineStore("main", () => {
         }
         updateRollovers();
     }
+
+    function resetState() {
+        pockets.value = [];
+        transactions.value = [];
+        monthStart.value = Date.now();
+        isLoaded.value = false;
+        storageFailed.value = false;
+        syncEnabled.value = false;
+        userId.value = null;
+        syncFailed.value = false;
+        isSyncing.value = false;
+        suppressWatch.value = false;
+        localStorage.removeItem(TRANSACTION_STORAGE_KEY);
+        localStorage.removeItem(POCKET_STORAGE_KEY);
+        localStorage.removeItem(MONTH_START_KEY);
+    }
+
+    onUserChange(async (newUserId) => {
+        if (newUserId) {
+            resetState();
+            await loadFromStorage();
+        } else {
+            resetState();
+            isLoaded.value = true;
+        }
+    });
 
     return {
         pockets,
