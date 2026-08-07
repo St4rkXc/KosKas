@@ -193,34 +193,44 @@ export const useStore = defineStore("main", () => {
 
     let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
+    function syncToSupabase() {
+        if (!syncEnabled.value || !userId.value) return;
+        if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
+        syncDebounceTimer = setTimeout(async () => {
+            if (!userId.value) return;
+            isSyncing.value = true;
+            try {
+                await Promise.all([
+                    upsertAllPockets(userId.value, pockets.value),
+                    syncAllTransactions(userId.value, transactions.value),
+                    supabase
+                        .from('profiles')
+                        .upsert({ id: userId.value, month_start: monthStart.value, updated_at: new Date().toISOString() }),
+                ]);
+                syncFailed.value = false;
+            } catch (err) {
+                console.warn('Supabase sync failed (offline?):', err);
+                syncFailed.value = true;
+            } finally {
+                isSyncing.value = false;
+            }
+        }, 300);
+    }
+
+    if (typeof window !== 'undefined') {
+        window.addEventListener('online', () => {
+            if (syncEnabled.value && userId.value && syncFailed.value) {
+                syncToSupabase();
+            }
+        });
+    }
+
     watch(
         [transactions, pockets, monthStart, isLoaded],
         () => {
             if (!isLoaded.value || suppressWatch.value) return;
             persistToStorage();
-
-            if (syncEnabled.value && userId.value) {
-                if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
-                syncDebounceTimer = setTimeout(async () => {
-                    if (!userId.value) return;
-                    isSyncing.value = true;
-                    try {
-                        await Promise.all([
-                            upsertAllPockets(userId.value, pockets.value),
-                            syncAllTransactions(userId.value, transactions.value),
-                            supabase
-                                .from('profiles')
-                                .upsert({ id: userId.value, month_start: monthStart.value, updated_at: new Date().toISOString() }),
-                        ]);
-                        syncFailed.value = false;
-                    } catch (err) {
-                        console.warn('Supabase sync failed (offline?):', err);
-                        syncFailed.value = true;
-                    } finally {
-                        isSyncing.value = false;
-                    }
-                }, 300);
-            }
+            syncToSupabase();
         },
         { deep: true },
     );
