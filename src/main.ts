@@ -1,6 +1,7 @@
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import App from './App.vue';
+import { useAuth } from './composables/useAuth';
 import './index.css';
 
 const app = createApp(App);
@@ -15,4 +16,8 @@ app.config.warnHandler = (msg, _instance, trace) => {
 };
 
 app.use(pinia);
-app.mount('#root');
+
+const { initAuth } = useAuth();
+initAuth().then(() => {
+    app.mount('#root');
+});

@@ -13,6 +13,7 @@ import {
     ChevronLeft,
     ChevronRight,
     Clock,
+    LogOut,
 } from "lucide-vue-next";
 import KeypadModal from "./components/KeypadModal.vue";
 import PocketSettingsModal from "./components/PocketSettingsModal.vue";
@@ -20,8 +21,10 @@ import TransferModal from "./components/TransferModal.vue";
 import { useStore } from "./store";
 import { formatRupiah, vibrate, hexFromColorClass, POCKET_IDS } from "./types";
 import { resolveIcon } from "./iconMap";
+import { useAuth } from "./composables/useAuth";
 
 const store = useStore();
+const { user: authUser, loading: authLoading, signIn, signUp, signInWithGoogle, signOut } = useAuth();
 const showHistory = ref(false);
 const showPerformance = ref(false);
 const isKeypadOpen = ref(false);
@@ -29,6 +32,41 @@ const isPocketSettingsOpen = ref(false);
 const isTransferOpen = ref(false);
 
 const selectedMonth = ref(new Date());
+const email = ref('');
+const password = ref('');
+const authError = ref('');
+const isSignUp = ref(false);
+
+async function handleAuth() {
+    authError.value = '';
+    try {
+        if (isSignUp.value) {
+            await signUp(email.value, password.value);
+        } else {
+            await signIn(email.value, password.value);
+        }
+    } catch (e: any) {
+        const msg = e?.message || 'Authentication failed';
+        if (msg.includes('Invalid login credentials')) {
+            authError.value = 'Invalid email or password.';
+        } else if (msg.includes('User already registered')) {
+            authError.value = 'An account with this email already exists.';
+        } else if (msg.includes('Email not confirmed')) {
+            authError.value = 'Please confirm your email address before signing in.';
+        } else {
+            authError.value = msg;
+        }
+    }
+}
+
+async function handleGoogleAuth() {
+    authError.value = '';
+    try {
+        await signInWithGoogle();
+    } catch (e: any) {
+        authError.value = e?.message || 'Google sign-in failed.';
+    }
+}
 
 const pocketMap = computed(() => {
     const map: Record<string, (typeof store.pockets)[number] & { hexColor: string }> = {};
@@ -268,19 +306,90 @@ function formatDateTime(timestamp: number) {
 </script>
 
 <template>
-    <div v-if="!store.isLoaded" class="min-h-screen bg-bg-primary text-text-primary"></div>
+    <div v-if="authLoading" class="min-h-screen bg-bg-primary text-text-primary"></div>
+
+    <div v-else-if="!authUser" class="min-h-screen bg-bg-primary flex items-center justify-center p-4 select-none">
+        <div class="bg-bg-surface p-8 rounded-sm w-full max-w-sm space-y-6">
+            <h1 class="font-mono text-2xl text-text-primary font-bold text-center">KosKas</h1>
+            <p class="text-text-muted text-sm text-center">Sign in to sync your data</p>
+
+            <div class="space-y-3">
+                <input
+                    v-model="email"
+                    type="email"
+                    placeholder="Email"
+                    class="w-full bg-bg-primary border border-[#2A2A2A] rounded-sm px-4 py-3 text-text-primary focus:outline-none focus:border-neon-safe"
+                />
+                <input
+                    v-model="password"
+                    type="password"
+                    placeholder="Password"
+                    class="w-full bg-bg-primary border border-[#2A2A2A] rounded-sm px-4 py-3 text-text-primary focus:outline-none focus:border-neon-safe"
+                    @keyup.enter="handleAuth"
+                />
+                <p v-if="authError" class="text-neon-danger text-xs">{{ authError }}</p>
+            </div>
+
+            <div class="flex gap-3">
+                <button
+                    @click="isSignUp = false; handleAuth()"
+                    :class="['flex-1 py-3 rounded-sm font-bold transition-opacity', isSignUp ? 'bg-[#1E1E1E] text-text-muted' : 'bg-neon-safe text-bg-primary hover:opacity-90']"
+                >
+                    Sign In
+                </button>
+                <button
+                    @click="isSignUp = true; handleAuth()"
+                    :class="['flex-1 py-3 rounded-sm font-bold transition-colors', isSignUp ? 'bg-neon-safe text-bg-primary hover:opacity-90' : 'bg-[#1E1E1E] text-text-primary hover:bg-[#2A2A2A]']"
+                >
+                    Sign Up
+                </button>
+            </div>
+
+            <div class="relative">
+                <div class="absolute inset-0 flex items-center">
+                    <div class="w-full border-t border-[#2A2A2A]"></div>
+                </div>
+                <div class="relative flex justify-center text-xs">
+                    <span class="bg-bg-surface px-2 text-text-muted">or</span>
+                </div>
+            </div>
+
+            <button
+                @click="handleGoogleAuth"
+                class="w-full flex items-center justify-center gap-3 bg-[#1E1E1E] border border-[#2A2A2A] text-text-primary py-3 rounded-sm font-bold hover:bg-[#2A2A2A] transition-colors"
+            >
+                <svg class="w-5 h-5" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                </svg>
+                Continue with Google
+            </button>
+        </div>
+    </div>
+
+    <div v-else-if="!store.isLoaded" class="min-h-screen bg-bg-primary text-text-primary"></div>
 
     <div v-else class="w-full min-h-screen bg-bg-primary text-text-primary flex flex-col font-sans p-6 sm:p-10 select-none overflow-x-hidden selection:bg-neon-safe/30 relative">
         <div v-if="store.storageFailed" class="fixed top-0 left-0 right-0 z-50 bg-neon-danger/20 border-b border-neon-danger px-4 py-2 text-center">
             <span class="text-neon-danger text-xs font-mono">⚠ Storage unavailable — data will be lost when you close this tab</span>
         </div>
+        <div v-else-if="store.syncFailed" class="fixed top-0 left-0 right-0 z-50 bg-amber-500/20 border-b border-amber-500/40 px-4 py-2 text-center">
+            <span class="text-amber-400 text-xs font-mono">⚠ Supabase sync failed — changes saved locally, retrying automatically</span>
+        </div>
 
         <div class="absolute top-4 left-0 w-full px-6 sm:px-10 flex justify-between z-20 pointer-events-none">
             <div class="font-mono text-[10px] text-text-muted">V3.2-TACTICAL • {{ currentDateStr }}</div>
-            <div class="font-mono text-[10px] text-text-muted hidden sm:flex gap-2">
+            <div class="font-mono text-[10px] text-text-muted hidden sm:flex gap-2 items-center">
                 <span>DISK: 14%</span>
-                <span>SYNC: OK</span>
+                <span v-if="store.isSyncing" class="text-neon-safe animate-pulse">SYNC: SYNCING...</span>
+                <span v-else-if="store.syncFailed" class="text-amber-400">SYNC: OFFLINE</span>
+                <span v-else>SYNC: OK</span>
                 <span>OLED: ON</span>
+                <button @click="signOut" class="pointer-events-auto flex items-center gap-1 text-text-muted hover:text-neon-danger transition-colors ml-2">
+                    <LogOut :size="10" /> Sign Out
+                </button>
             </div>
         </div>
 
