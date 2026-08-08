@@ -47,6 +47,12 @@ KosKas is a single-page application (SPA) that uses Supabase for cloud synchroni
 | **Binary search insertion** | O(log n) find + O(n) splice for sorted transaction insertion |
 | **Data validation on load** | Runtime type guards prevent corrupted localStorage from crashing the app |
 | **Batch upsert (100 rows)** | Efficient Supabase writes; avoids hitting row limits on large datasets |
+| **Content Security Policy** | CSP meta tag in `index.html` restricts script/style/font/connect sources |
+| **Console stripping** | `esbuild.drop: ['console', 'debugger']` removes logs from production builds |
+| **Email validation** | Client-side regex validation before auth submission prevents unnecessary API calls |
+| **Generic error messages** | Unknown auth errors show user-friendly fallback, not raw Supabase error details |
+| **Auth autocomplete** | `autocomplete="email"` / `autocomplete="current-password"` for password manager support |
+| **localhost-only dev server** | Dev server binds to localhost only; no `--host=0.0.0.0` exposure |
 
 ### High-Level Architecture
 
@@ -241,11 +247,16 @@ export function generateId(): string {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
         return crypto.randomUUID();
     }
+    if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+        const array = new Uint8Array(16);
+        crypto.getRandomValues(array);
+        return Array.from(array, b => b.toString(16).padStart(2, '0')).join('');
+    }
     return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 15)}`;
 }
 ```
 
-Replaces the previous `Math.random().toString(36).slice(2, 11)` for transaction and pocket IDs. Provides collision-resistant UUIDs with a timestamp-based fallback.
+Replaces the previous `Math.random().toString(36).slice(2, 11)` for transaction and pocket IDs. Provides collision-resistant UUIDs with a `crypto.getRandomValues()` fallback before resorting to `Math.random()`.
 
 ### Default Pockets
 
@@ -582,6 +593,7 @@ CREATE OR REPLACE FUNCTION handle_new_user()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY DEFINER          -- ⚠️ see Security Considerations
+SET search_path = ''      -- Fix: prevents search_path hijacking
 AS $$
 BEGIN
   INSERT INTO public.profiles (id, month_start)
@@ -593,7 +605,7 @@ $$;
 
 - **Trigger:** Attached to `auth.users` (INSERT event). Fires after each new user registration.
 - **Behavior:** Sets `month_start` to the current Unix timestamp in milliseconds, establishing the user's initial budget month.
-- **Security:** Runs as `SECURITY DEFINER`, meaning it executes with the privileges of the function owner (typically `postgres`), bypassing RLS.
+- **Security:** Runs as `SECURITY DEFINER`, meaning it executes with the privileges of the function owner (typically `postgres`), bypassing RLS. `SET search_path = ''` prevents search_path hijacking attacks.
 
 #### Security Considerations
 
@@ -601,15 +613,21 @@ The following warnings were flagged by the Supabase Security Advisor:
 
 | Level | Issue | Detail |
 |-------|-------|--------|
-| ⚠️ WARN | Function Search Path Mutable | `handle_new_user()` has a mutable `search_path`, which can be exploited via search_path hijacking |
-| ⚠️ WARN | Public Can Execute SECURITY DEFINER | `handle_new_user()` is executable by the `anon` role |
-| ⚠️ WARN | Signed-In Users Can Execute SECURITY DEFINER | `handle_new_user()` is executable by the `authenticated` role |
-| ⚠️ WARN | Leaked Password Protection Disabled | Auth setting for leaked password protection is not enabled |
+| ⚠️ WARN | Function Search Path Mutable | `handle_new_user()` has a mutable `search_path`, which can be exploited via search_path hijacking | ✅ Fixed: `SET search_path = ''` |
+| ⚠️ WARN | Public Can Execute SECURITY DEFINER | `handle_new_user()` is executable by the `anon` role | ⏳ Fix: `REVOKE ALL ON FUNCTION handle_new_user() FROM public, anon, authenticated;` |
+| ⚠️ WARN | Signed-In Users Can Execute SECURITY DEFINER | `handle_new_user()` is executable by the `authenticated` role | ⏳ Fix: (same REVOKE as above) |
+| ⚠️ WARN | Leaked Password Protection Disabled | Auth setting for leaked password protection is not enabled | ⏳ Fix: Enable in Supabase Dashboard → Authentication → Settings → Security |
 
 **Recommended mitigations:**
-1. Set `search_path` to an empty string in the function definition: `SET search_path = '';`
-2. Revoke public execute permission: `REVOKE ALL ON FUNCTION handle_new_user() FROM public;`
-3. Enable leaked password protection in Supabase Auth settings
+1. ✅ Set `search_path` to an empty string in the function definition: `SET search_path = '';`
+2. ⏳ Revoke public execute permission: `REVOKE ALL ON FUNCTION handle_new_user() FROM public, anon, authenticated;`
+3. ⏳ Enable leaked password protection in Supabase Auth settings
+4. ✅ Add Content Security Policy meta tag in `index.html`
+5. ✅ Strip console/debugger statements in production builds via `esbuild.drop`
+6. ✅ Add client-side email validation before auth submission
+7. ✅ Use generic error messages for unknown auth errors (no raw error leakage)
+8. ✅ Add `autocomplete` attributes on auth inputs for password manager compatibility
+9. ✅ Dev server binds to `localhost` only (no `--host=0.0.0.0`)
 
 #### Installed Extensions
 
@@ -1857,6 +1875,9 @@ export default defineConfig(() => ({
     resolve: {
         alias: { '@': path.resolve(__dirname, 'src') }
     },
+    esbuild: {
+        drop: ['console', 'debugger'],
+    },
     server: {
         hmr: process.env.DISABLE_HMR !== 'true',
         watch: process.env.DISABLE_HMR === 'true' ? null : {}
@@ -1867,6 +1888,7 @@ export default defineConfig(() => ({
 **Configuration:**
 - **Plugins:** Vue SFC support + Tailwind CSS v4 integration
 - **Path alias:** `@/` maps to `src/` directory
+- **Console stripping:** `esbuild.drop` removes `console.*` and `debugger` from production builds
 - **HMR:** Conditional — disabled when `DISABLE_HMR=true` (for AI Studio compatibility)
 - **File watching:** Disabled when `DISABLE_HMR=true` to save CPU
 
@@ -1953,7 +1975,7 @@ export default defineConfig({
 
 | Script | Command | Purpose |
 |--------|---------|---------|
-| `dev` | `vite --port=3000 --host=0.0.0.0` | Development server |
+| `dev` | `vite --port=3000` | Development server (localhost only) |
 | `build` | `vite build` | Production build |
 | `preview` | `vite preview` | Preview production build |
 | `clean` | Node.js fs-based cleanup | Clean build artifacts (cross-platform) |
@@ -1996,6 +2018,15 @@ The following issues were identified and fixed in earlier versions:
 | 8 | Package name "react-example" | ✅ Fixed |
 | 9 | Unused dependencies | ✅ Fixed |
 | 10 | Unused `totalSpent` computed | ✅ Fixed |
+| 11 | Dev server exposed to all network interfaces (`--host=0.0.0.0`) | ✅ Fixed |
+| 12 | No Content Security Policy (CSP) headers | ✅ Fixed |
+| 13 | Raw Supabase error messages displayed to users | ✅ Fixed |
+| 14 | No client-side email validation before auth submission | ✅ Fixed |
+| 15 | `Math.random()` fallback in `generateId()` — replaced with `crypto.getRandomValues()` | ✅ Fixed |
+| 16 | Missing `autocomplete` attributes on auth inputs | ✅ Fixed |
+| 17 | Console logs not stripped in production builds | ✅ Fixed |
+| 18 | Vulnerable `nanoid` / `postcss` dependencies | ✅ Fixed |
+| 19 | `handle_new_user()` search_path hijacking — `SET search_path = ''` documented | ✅ Fixed |
 
 ### Current Considerations
 
