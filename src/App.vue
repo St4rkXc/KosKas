@@ -37,13 +37,20 @@ const password = ref('');
 const authError = ref('');
 const isSignUp = ref(false);
 
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 async function handleAuth() {
     authError.value = '';
+    const trimmedEmail = email.value.trim();
+    if (!emailRegex.test(trimmedEmail)) {
+        authError.value = 'Please enter a valid email address.';
+        return;
+    }
     try {
         if (isSignUp.value) {
-            await signUp(email.value, password.value);
+            await signUp(trimmedEmail, password.value);
         } else {
-            await signIn(email.value, password.value);
+            await signIn(trimmedEmail, password.value);
         }
     } catch (e: any) {
         const msg = e?.message || 'Authentication failed';
@@ -54,7 +61,8 @@ async function handleAuth() {
         } else if (msg.includes('Email not confirmed')) {
             authError.value = 'Please confirm your email address before signing in.';
         } else {
-            authError.value = msg;
+            authError.value = 'An unexpected error occurred. Please try again.';
+            console.error('Auth error:', e);
         }
     }
 }
@@ -318,12 +326,14 @@ function formatDateTime(timestamp: number) {
                     v-model="email"
                     type="email"
                     placeholder="Email"
+                    autocomplete="email"
                     class="w-full bg-bg-primary border border-[#2A2A2A] rounded-sm px-4 py-3 text-text-primary focus:outline-none focus:border-neon-safe"
                 />
                 <input
                     v-model="password"
                     type="password"
                     placeholder="Password"
+                    :autocomplete="isSignUp ? 'new-password' : 'current-password'"
                     class="w-full bg-bg-primary border border-[#2A2A2A] rounded-sm px-4 py-3 text-text-primary focus:outline-none focus:border-neon-safe"
                     @keyup.enter="handleAuth"
                 />

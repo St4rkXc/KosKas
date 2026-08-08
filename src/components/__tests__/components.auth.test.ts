@@ -345,7 +345,9 @@ describe('App.vue — Auth Error Handling', () => {
 
     const wrapper = mountApp();
 
-    // Click Sign Up to switch mode and trigger
+    await wrapper.find('input[type="email"]').setValue('test@example.com');
+    await wrapper.find('input[type="password"]').setValue('password123');
+
     const signUpBtn = wrapper.findAll('button').find((b) => b.text().trim() === 'Sign Up');
     await signUpBtn?.trigger('click');
     await wrapper.vm.$nextTick();
@@ -382,7 +384,7 @@ describe('App.vue — Auth Error Handling', () => {
     await signInBtn?.trigger('click');
     await wrapper.vm.$nextTick();
 
-    expect(wrapper.text()).toContain('Something unexpected');
+    expect(wrapper.text()).toContain('An unexpected error occurred. Please try again.');
   });
 });
 
