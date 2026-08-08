@@ -45,6 +45,7 @@ vi.mock('../../composables/useAuth', () => ({
     signInWithGoogle: vi.fn(),
     signOut: vi.fn(),
   }),
+  onUserChange: vi.fn(),
 }));
 
 // ─── Shared Helpers ───────────────────────────────────────────────────────────
