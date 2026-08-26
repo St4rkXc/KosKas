@@ -385,6 +385,3 @@ Untuk pertanyaan atau issue, silakan buka issue di GitHub repository.
 
 ---
 
-**Dibuat dengan ❤️ untuk disiplin finansial bulanan**
-
-Versi: 3.2-TACTICAL
