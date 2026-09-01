@@ -1,36 +1,38 @@
-# KosKas — Personal Finance Tracker untuk Disiplin Budget Bulanan
+# KosKas — Personal Finance Tracker for Monthly Budget Discipline
 
-Aplikasi web single-page untuk melacak pengeluaran pribadi dengan pendekatan pocket-based budgeting. KosKas membantu Anda mengalokasikan pendapatan bulanan ke dalam kategori "pocket" (Pangan, Kos, Transportasi, Lifestyle, Dana Darurat, Tabungan, dll.) dan memantau pengeluaran harian secara real-time dengan sistem rollover otomatis untuk sisa budget pangan.
+A single-page web application for tracking personal expenses using a pocket-based budgeting approach. KosKas helps you allocate your monthly income into customizable "pocket" categories (Food, Rent, Transportation, Lifestyle, Emergency Fund, Savings, etc.) and monitor daily spending in real-time with an automatic rollover system for leftover food budget.
 
-## ✨ Fitur Utama
+## Features
 
-- **Pocket-Based Budgeting** — Alokasikan pendapatan bulanan ke dalam kategori pengeluaran yang dapat dikustomisasi
-- **Sistem Pocket Default** — 7 pocket sistem yang tidak dapat dihapus: Pangan, Fixed/Kos, Transportasi, Lifestyle, Dana Darurat, Tabungan, dan Sisa Pangan
-- **Custom Pockets** — Buat pocket kustom dengan ikon dan warna pilihan Anda
-- **Pelacakan Pengeluaran** — Catat pengeluaran dengan keypad numerik cepat dan pemilihan pocket
-- **Transfer Antar Pocket** — Pindahkan saldo antar pocket sesuai kebutuhan
-- **Rollover Pangan Otomatis** — Sistem otomatis menghitung dan memindahkan sisa budget harian pangan ke pocket "Sisa Pangan"
-- **Dashboard Real-Time** — Lihat saldo tersisa per pocket, progress bar visual, dan status over-budget
-- **Statistik Harian Pangan** — Pantau target pengeluaran pangan harian dan sisa budget
-- **Persistent Storage** — Semua data tersimpan di localStorage browser (tidak perlu backend)
-- **Dark Tactical UI** — Desain neon-minimalist dengan estetika tactical untuk pengalaman visual yang fokus
-- **Responsive Design** — Optimal untuk mobile dan desktop dengan custom breakpoints
-- **Haptic Feedback** — Getaran pada interaksi untuk pengalaman mobile yang lebih immersive (perangkat yang mendukung)
+- **Pocket-Based Budgeting** — Allocate monthly income into customizable spending categories
+- **System Pockets** — 7 built-in pockets that cannot be deleted: Food, Fixed/Rent, Transportation, Lifestyle, Emergency Fund, Savings, and Food Leftover
+- **Custom Pockets** — Create custom pockets with your choice of icon and color
+- **Expense Tracking** — Record expenses with a fast numeric keypad and pocket selector
+- **Inter-Pocket Transfers** — Move balances between pockets as needed
+- **Automatic Food Rollover** — System automatically calculates and transfers unused daily food budget to the "Food Leftover" pocket
+- **Real-Time Dashboard** — View remaining balance per pocket, visual progress bars, and over-budget status
+- **Daily Food Statistics** — Monitor daily food spending targets and remaining budget
+- **Cloud Sync** — Supabase-backed cloud synchronization with localStorage fallback for offline use
+- **Authentication** — Email/password and Google OAuth via Supabase Auth
+- **Performance Dashboard** — Month-over-month spending comparison with per-pocket analytics
+- **Dark Tactical UI** — Neon-minimalist design with a tactical aesthetic for a focused visual experience
+- **Responsive Design** — Optimized for mobile and desktop with custom breakpoints
+- **Haptic Feedback** — Vibration on interactions for a more immersive mobile experience (supported devices)
 
-## 📋 Prasyarat
+## Prerequisites
 
-- **Node.js** — versi 18 atau lebih tinggi
-- **pnpm** — versi 10.28.0 atau lebih tinggi
+- **Node.js** — version 18 or higher
+- **pnpm** — version 10.28.0 or higher
 
-Install pnpm secara global jika belum tersedia:
+Install pnpm globally if not already available:
 
 ```bash
 npm install -g pnpm@10.28.0
 ```
 
-## 🚀 Instalasi & Menjalankan Aplikasi
+## Installation & Running
 
-### 1. Clone Repository
+### 1. Clone the Repository
 
 ```bash
 git clone <repository-url>
@@ -43,35 +45,33 @@ cd koskas
 pnpm install
 ```
 
-### 3. Konfigurasi Environment Variables (Opsional)
+### 3. Configure Environment Variables
 
-Copy file `.env.example` ke `.env.local` dan isi jika diperlukan:
+Copy `.env.example` to `.env.local` and fill in your Supabase credentials:
 
 ```bash
 cp .env.example .env.local
 ```
 
-Variables yang tersedia:
-- `GEMINI_API_KEY` — Untuk integrasi Gemini AI (otomatis di-inject di AI Studio)
-- `APP_URL` — URL aplikasi (otomatis di-inject di AI Studio)
+Available variables:
+- `VITE_SUPABASE_URL` — Your Supabase project URL
+- `VITE_SUPABASE_ANON_KEY` — Your Supabase anonymous key
 
-**Catatan:** Untuk penggunaan lokal standalone, kedua variable ini tidak diperlukan karena KosKas tidak memerlukan backend.
-
-### 4. Jalankan Development Server
+### 4. Run the Development Server
 
 ```bash
 pnpm dev
 ```
 
-Aplikasi akan berjalan di `http://localhost:3000`
+The app will be available at `http://localhost:3000`
 
-### 5. Build untuk Production
+### 5. Build for Production
 
 ```bash
 pnpm build
 ```
 
-Output akan tersedia di folder `dist/`
+Output will be in the `dist/` folder.
 
 ### 6. Preview Production Build
 
@@ -85,181 +85,164 @@ pnpm preview
 pnpm lint
 ```
 
-Menjalankan TypeScript type checking tanpa emit file.
+Runs TypeScript type checking without emitting files.
 
-## 📖 Cara Menggunakan
+### 8. Run Tests
 
-### Memulai dengan Pocket System
+```bash
+pnpm test
+```
 
-Saat pertama kali membuka KosKas, Anda akan melihat 7 pocket default:
+Runs the Vitest test suite with happy-dom environment.
 
-1. **Pangan** — Budget makan harian (Rp 1.500.000 default)
-2. **Fixed / Kos** — Biaya tempat tinggal (Rp 1.000.000 default)
-3. **Transportasi** — Biaya transportasi (Rp 300.000 default)
-4. **Lifestyle** — Gaya hidup & hiburan (Rp 300.000 default)
-5. **Dana Darurat** — Tabungan darurat (Rp 200.000 default)
-6. **Tabungan** — Sisa saldo yang tidak dialokasikan (otomatis)
-7. **Sisa Pangan** — Rollover budget pangan harian (otomatis)
+## Usage Guide
 
-### Mengatur Alokasi Budget Bulanan
+### Getting Started with the Pocket System
 
-1. Klik tombol **"Alokasi"** di pojok kanan bawah
-2. Atur **Total Saldo Bulanan** (income bulanan Anda)
-3. Atur alokasi untuk setiap pocket sesuai kebutuhan
-4. Pocket **Tabungan** akan otomatis menerima sisa saldo yang tidak dialokasikan
-5. Klik **"Simpan Alokasi"** untuk menerapkan
+When you first open KosKas, you'll see 7 default pockets:
 
-**Tips:** Total alokasi tidak boleh melebihi Total Saldo Bulanan.
+1. **Food** — Daily food budget (Rp 1,500,000 default)
+2. **Fixed / Rent** — Housing costs (Rp 1,000,000 default)
+3. **Transportation** — Transport costs (Rp 300,000 default)
+4. **Lifestyle** — Lifestyle & entertainment (Rp 300,000 default)
+5. **Emergency Fund** — Emergency savings (Rp 200,000 default)
+6. **Savings** — Unallocated remaining balance (automatic)
+7. **Food Leftover** — Daily food budget rollover (automatic)
 
-### Mencatat Pengeluaran
+### Setting Monthly Budget Allocations
 
-1. Klik tombol **FAB hijau (+)** di pojok kanan bawah
-2. Pilih pocket tujuan pengeluaran (Pangan, Kos, Transportasi, dll.)
-3. Masukkan jumlah menggunakan keypad numerik
-4. Klik **"Simpan"**
+1. Click the **"Allocation"** button in the bottom-right corner
+2. Set your **Total Monthly Balance** (monthly income)
+3. Adjust allocation for each pocket as needed
+4. The **Savings** pocket automatically receives any unallocated remainder
+5. Click **"Save Allocation"** to apply
 
-Pengeluaran akan langsung mengurangi saldo pocket yang dipilih.
+**Tip:** Total allocation must not exceed Total Monthly Balance.
 
-### Transfer Antar Pocket
+### Recording Expenses
 
-Jika Anda perlu memindahkan saldo antar pocket:
+1. Click the green **FAB (+)** button in the bottom-right corner
+2. Select the target pocket (Food, Rent, Transportation, etc.)
+3. Enter the amount using the numeric keypad
+4. Click **"Save"**
 
-1. Klik tombol **"Transfer"** di pojok kanan bawah
-2. Pilih pocket sumber (Dari Pocket)
-3. Pilih pocket tujuan (Ke Pocket)
-4. Masukkan jumlah transfer
-5. Tambahkan catatan (opsional)
-6. Klik **"Lakukan Transfer"**
+The expense will immediately reduce the selected pocket's balance.
 
-**Validasi:** Jumlah transfer tidak boleh melebihi saldo pocket sumber.
+### Transferring Between Pockets
 
-### Menghapus Pocket Kustom
+If you need to move balances between pockets:
 
-Untuk pocket yang Anda buat sendiri (bukan pocket sistem):
+1. Click the **"Transfer"** button in the bottom-right corner
+2. Select the source pocket (From Pocket)
+3. Select the destination pocket (To Pocket)
+4. Enter the transfer amount
+5. Add a note (optional)
+6. Click **"Execute Transfer"**
 
-1. Buka **Alokasi** settings
-2. Cari pocket yang ingin dihapus
-3. Klik ikon **Trash** di sebelah nama pocket
-4. Konfirmasi penghapusan
+**Validation:** Transfer amount must not exceed the source pocket's balance.
 
-**Catatan:** Sisa saldo akan otomatis dipindahkan ke pocket Tabungan.
+### Deleting Custom Pockets
 
-### Memahami Rollover Pangan
+For pockets you created yourself (not system pockets):
 
-KosKas secara otomatis menghitung rollover budget pangan harian:
+1. Open **Allocation** settings
+2. Find the pocket you want to delete
+3. Click the **Trash** icon next to the pocket name
+4. Confirm deletion
 
-- Target harian = `Alokasi Pangan / Jumlah hari dalam bulan`
-- Setiap hari yang sudah lewat, sistem menghitung sisa budget yang tidak terpakai
-- Sisa budget dipindahkan ke pocket **Sisa Pangan**
-- Rollover dihitung ulang setiap kali ada transaksi baru
+**Note:** Remaining balance will automatically be transferred to the Savings pocket.
 
-**Contoh:**
-- Alokasi Pangan: Rp 1.500.000
-- Hari dalam bulan: 30
-- Target harian: Rp 50.000
-- Jika hari ini Anda hanya menghabiskan Rp 35.000, maka Rp 15.000 akan di-rollover ke Sisa Pangan
+### Understanding Food Rollover
 
-### Reset Bulanan
+KosKas automatically calculates daily food budget rollover:
 
-Untuk memulai bulan baru:
+- Daily target = `Food Allocation / Number of days in month`
+- Each elapsed day, the system calculates unused budget remainder
+- Leftover budget is transferred to the **Food Leftover** pocket
+- Rollover is recalculated on every new transaction
 
-1. Klik ikon **Settings** di header
-2. Klik **"Aktivitas Terakhir"** untuk melihat riwayat
-3. Klik tombol **"Reset"**
-4. Konfirmasi reset
+**Example:**
+- Food Allocation: Rp 1,500,000
+- Days in month: 30
+- Daily target: Rp 50,000
+- If you only spent Rp 35,000 today, Rp 15,000 will be rolled over to Food Leftover
 
-**Peringatan:** Semua transaksi dan transfer akan dihapus. Pocket settings tetap tersimpan.
+### Monthly Reset
 
-### Melihat Riwayat Transaksi
+To start a new month:
 
-1. Klik ikon **Settings** di header
-2. Toggle **"Aktivitas Terakhir"** untuk melihat daftar transaksi
-3. Hover pada transaksi untuk melihat tombol hapus
-4. Klik ikon **Trash** untuk menghapus transaksi tertentu
+1. Click the **Settings** icon in the header
+2. Click **"Recent Activity"** to view history
+3. Click the **"Reset"** button
+4. Confirm the reset
 
-## ⚙️ Konfigurasi
+**Warning:** All transactions and transfers will be deleted. Pocket settings are preserved.
+
+### Viewing Transaction History
+
+1. Click the **Clock** icon in the header
+2. Browse the transaction list
+3. Hover over a transaction to reveal the delete button
+4. Click the **Trash** icon to delete a specific transaction
+
+## Configuration
 
 ### Custom Breakpoints
 
-KosKas menggunakan custom breakpoints alih-alih standar Tailwind:
+KosKas uses custom breakpoints instead of standard Tailwind defaults:
 
-| Breakpoint | Lebar | Penggunaan |
-|------------|-------|------------|
-| `mobile-sm` | 480px | Mobile kecil |
-| `mobile` | 640px | Mobile standar |
+| Breakpoint | Width | Usage |
+|------------|-------|-------|
+| `mobile-sm` | 480px | Small mobile |
+| `mobile` | 640px | Standard mobile |
 | `tablet` | 768px | Tablet |
-| `laptop-sm` | 1024px | Laptop kecil |
-| `laptop` | 1280px | Laptop standar |
+| `laptop-sm` | 1024px | Small laptop |
+| `laptop` | 1280px | Standard laptop |
 | `desktop` | 1440px | Desktop |
-| `desktop-lg` | 1600px | Desktop besar |
+| `desktop-lg` | 1600px | Large desktop |
 
 ### Design System
 
-#### Warna
+#### Colors
 
-- **Background Primary:** `#050505` (hitam pekat)
-- **Background Surface:** `#121212` (hitam permukaan)
-- **Text Primary:** `#FAFAFA` (putih)
-- **Text Muted:** `#71717A` (abu-abu)
-- **Neon Safe:** `#10B981` (hijau — status aman)
+- **Background Primary:** `#050505` (deep black)
+- **Background Surface:** `#121212` (surface black)
+- **Text Primary:** `#FAFAFA` (white)
+- **Text Muted:** `#71717A` (gray)
+- **Neon Safe:** `#10B981` (green — safe status)
 - **Neon Warn:** `#F59E0B` (amber — warning)
-- **Neon Danger:** `#EF4444` (merah — over budget)
-- **Neon Vault:** `#8B5CF6` (ungu — tabungan)
+- **Neon Danger:** `#EF4444` (red — over budget)
+- **Neon Vault:** `#8B5CF6` (purple — savings)
 
-#### Font
+#### Fonts
 
 - **Sans-serif:** Inter (body text)
-- **Monospace:** JetBrains Mono (angka & data)
+- **Monospace:** JetBrains Mono (numbers & data)
 
 ### LocalStorage Keys
 
-KosKas menyimpan data di browser dengan keys berikut:
+KosKas stores data in the browser with the following keys:
 
-- `koskas_transactions` — Daftar transaksi
-- `koskas_pockets` — Konfigurasi pocket
-- `koskas_month_start` — Timestamp awal bulan
+- `koskas_transactions` — Transaction list
+- `koskas_pockets` — Pocket configuration
+- `koskas_month_start` — Month start timestamp
+- `koskas_archives` — Archived monthly data (up to 6 months)
 
-**Legacy Migration:** Sistem otomatis migrasi dari key lama `koskas_expenses` dan `koskas_budgets` jika ditemukan.
+## Tech Stack
 
-## 🛠️ Tech Stack
-
-| Teknologi | Versi | Purpose |
-|-----------|-------|---------|
-| **Vue** | 3.5 | Frontend framework dengan Composition API |
+| Technology | Version | Purpose |
+|-----------|---------|---------|
+| **Vue** | 3.5 | Frontend framework with Composition API |
 | **Pinia** | 4.0 | State management (composition store pattern) |
 | **TypeScript** | 5.8 | Type safety |
 | **Tailwind CSS** | 4.1 | Utility-first CSS framework |
 | **Vite** | 6.2 | Build tool & dev server |
+| **Supabase** | 2.x | Auth + cloud sync backend |
 | **lucide-vue-next** | 1.0 | Icon library |
+| **Vitest** | 4.x | Unit testing framework |
 | **pnpm** | 10.28 | Package manager |
 
-### Dependencies vs DevDependencies
-
-**Runtime Dependencies:**
-- `@google/genai` — Gemini AI integration (tidak digunakan di core app)
-- `@tailwindcss/vite` — Tailwind plugin untuk Vite
-- `@vueuse/core` — Vue composition utilities (tidak digunakan)
-- `dotenv` — Environment variable loader (tidak digunakan)
-- `express` — Web server (tidak digunakan)
-- `lucide-vue-next` — Icons
-- `pinia` — State management
-- `vite` — Build tool (seharusnya di devDependencies)
-- `vue` — Framework
-
-**Development Dependencies:**
-- `@types/express` — TypeScript types untuk Express
-- `@types/node` — TypeScript types untuk Node.js
-- `@vitejs/plugin-vue` — Vue plugin untuk Vite
-- `@vue/compiler-sfc` — Vue SFC compiler
-- `autoprefixer` — CSS vendor prefixer
-- `esbuild` — JavaScript bundler
-- `tailwindcss` — CSS framework
-- `tsx` — TypeScript execution
-- `typescript` — TypeScript compiler
-- `vite` — Build tool (duplikat dari dependencies)
-- `vue-tsc` — Vue TypeScript checker
-
-## 🏗️ Build & Deploy
+## Build & Deploy
 
 ### Local Development
 
@@ -267,7 +250,7 @@ KosKas menyimpan data di browser dengan keys berikut:
 pnpm dev
 ```
 
-Development server dengan HMR (Hot Module Replacement) di port 3000.
+Development server with HMR on port 3000.
 
 ### Production Build
 
@@ -275,116 +258,79 @@ Development server dengan HMR (Hot Module Replacement) di port 3000.
 pnpm build
 ```
 
-Output: folder `dist/` dengan file-file yang sudah di-optimize.
+Output: optimized files in the `dist/` folder.
 
-### Deploy ke Static Hosting
+### Deploy to Static Hosting
 
-File di folder `dist/` dapat di-deploy ke static hosting manapun:
+Files in `dist/` can be deployed to any static hosting provider:
 
-- **Vercel** — Drag & drop folder `dist/` atau connect repository
-- **Netlify** — Upload folder `dist/` atau connect repository
-- **GitHub Pages** — Push folder `dist/` ke branch `gh-pages`
-- **Cloudflare Pages** — Connect repository atau upload folder
+- **Vercel** — Drag & drop the `dist/` folder or connect repository
+- **Netlify** — Upload `dist/` folder or connect repository
+- **GitHub Pages** — Push `dist/` to the `gh-pages` branch
+- **Cloudflare Pages** — Connect repository or upload folder
 - **Firebase Hosting** — `firebase deploy --only hosting`
 
-### Deploy ke AI Studio
-
-KosKas dapat di-deploy ke Google AI Studio:
-
-1. Push code ke repository
-2. Buka AI Studio Apps: https://ai.studio/apps
-3. Import repository
-4. AI Studio akan otomatis build dan deploy
-
-## 📱 Browser Support
+## Browser Support
 
 - Chrome/Edge 90+
 - Firefox 88+
 - Safari 14+
 - Mobile browsers (iOS Safari, Chrome Mobile)
 
-**Note:** Haptic feedback hanya tersedia di perangkat mobile yang mendukung `navigator.vibrate()`.
+**Note:** Haptic feedback is only available on mobile devices supporting `navigator.vibrate()`.
 
-## 🐛 Known Limitations
+## Known Limitations
 
-### 1. Bug pada `deletePocket`
-Saat menghapus pocket, transfer untuk preserve balance dapat ter-korupsi karena `fromPocketId` di-rewrite. Ini menyebabkan saldo yang ditransfer tidak akurat.
+1. **`deletePocket` bug** — Transfer for balance preservation can be corrupted because `fromPocketId` gets rewritten, causing inaccurate transferred balance.
+2. **Rollover calculation performance** — `updateRollovers` has O(days x transactions) complexity and runs on every mutation. Can cause lag on mobile with many transactions.
+3. **Triple scan in `pocketBalances`** — Now optimized to single-pass aggregation.
+4. **No keypad input length cap** — Numeric input has no maximum length, potentially causing integer overflow on very large numbers.
+5. **Timestamp ambiguity in rollover** — Rollover transactions with the same timestamp as other expenses can cause inconsistent sort order.
+6. **Duplicate `vite` in dependencies** — `vite` is listed in both `dependencies` and `devDependencies`.
+7. **`clean` script not Windows-compatible** — Uses `rm -rf` which only works on Unix/Linux/macOS.
+8. **Unused dependencies** — Some dependencies are not used in the bundle.
 
-### 2. Performa Rollover Calculation
-Fungsi `updateRollovers` memiliki kompleksitas O(days × transactions) dan dijalankan pada setiap mutasi. Pada mobile device dengan banyak transaksi, dapat menyebabkan lag.
-
-### 3. Triple Scan pada `pocketBalances`
-Computed property `pocketBalances` melakukan 3 full scan transaksi per pocket setiap kali diakses. Dengan 7 pocket dan 100 transaksi, ini berarti 2100 iterasi.
-
-### 4. Tidak Ada Batas Input pada Keypad
-Input numerik pada keypad tidak memiliki batas panjang, berpotensi menyebabkan integer overflow pada angka yang sangat besar.
-
-### 5. Ambiguitas Timestamp pada Rollover
-Rollover transactions dengan timestamp yang sama dengan expense lain dapat menyebabkan urutan sorting yang tidak konsisten.
-
-### 6. Duplikasi `vite` di Dependencies
-Package `vite` terdaftar di kedua `dependencies` dan `devDependencies`, menyebabkan redundancy.
-
-### 7. Script `clean` Tidak Kompatibel Windows
-Script `pnpm clean` menggunakan `rm -rf` yang hanya bekerja di Unix/Linux/macOS, tidak di Windows.
-
-### 8. Nama Package Masih "react-example"
-`package.json` masih memiliki nama `"react-example"` (sisa dari template), seharusnya `"koskas"`.
-
-### 9. Unused Dependencies
-Beberapa dependencies tidak digunakan di bundle:
-- `@google/genai`
-- `dotenv`
-- `express`
-- `@vueuse/core`
-
-### 10. Computed `totalSpent` Tidak Digunakan
-Computed property `totalSpent` didefinisikan di store tetapi tidak digunakan di komponen manapun.
-
-## 🔮 Future Improvements
+## Future Improvements
 
 ### High Priority
-- **Fix `deletePocket` bug** — Perbaiki logika transfer balance preservation
-- **Optimize `updateRollovers`** — Gunakan memoization atau virtual scrolling untuk performa
-- **Optimize `pocketBalances`** — Implementasi single-pass algorithm untuk kalkulasi balance
-- **Add input length cap** — Batasi input keypad ke 12 digit untuk mencegah overflow
-- **Fix Windows compatibility** — Ganti script `clean` dengan cross-platform solution (rimraf)
+- Fix `deletePocket` bug — Fix balance preservation transfer logic
+- Optimize `updateRollovers` — Use memoization or virtual scrolling
+- Add input length cap — Limit keypad input to 12 digits to prevent overflow
+- Fix Windows compatibility — Replace `clean` script with cross-platform solution (rimraf)
 
 ### Medium Priority
-- **Clean up dependencies** — Hapus unused dependencies dan pindahkan `vite` ke devDependencies
-- **Rename package** — Ganti nama package dari "react-example" ke "koskas"
-- **Remove unused computed** — Hapus atau implementasikan penggunaan `totalSpent`
-- **Add data export** — Fitur export/import data ke JSON untuk backup
-- **Add charts/graphs** — Visualisasi pengeluaran dengan chart
+- Clean up dependencies — Remove unused dependencies, move `vite` to devDependencies
+- Add data export — Export/import data to JSON for backup
+- Add charts/graphs — Visualize spending with charts
 
 ### Low Priority
-- **Add categories per pocket** — Sub-kategori dalam setiap pocket
-- **Recurring transactions** — Pengeluaran rutin otomatis
-- **Budget alerts** — Notifikasi saat mendekati limit pocket
-- **Multi-currency support** — Dukungan untuk mata uang selain IDR
-- **Dark/Light theme toggle** — Opsi untuk light mode
-- **PWA support** — Installable app dengan offline support
-- **Cloud sync** — Sync data antar perangkat
+- Add categories per pocket — Sub-categories within each pocket
+- Recurring transactions — Automatic recurring expenses
+- Budget alerts — Notifications when approaching pocket limits
+- Multi-currency support — Support for currencies other than IDR
+- Dark/Light theme toggle — Option for light mode
+- PWA support — Installable app with offline support
 
-## 📄 License
+## License
 
-Tidak ada lisensi yang ditentukan. Untuk informasi lebih lanjut, hubungi maintainer repository.
+No license specified. Contact the repository maintainer for more information.
 
-## 🤝 Contributing
+## Contributing
 
-Kontribusi diterima! Silakan fork repository dan buat pull request dengan perubahan Anda.
+Contributions are welcome! Please fork the repository and create a pull request with your changes.
 
-Untuk pertanyaan atau issue, silakan buka issue di GitHub repository.
+For questions or issues, please open an issue on the GitHub repository.
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
-- Dibangun dengan **Vue 3** dan **Pinia**
-- Styling dengan **Tailwind CSS**
-- Icons dari **Lucide**
-- Design terinspirasi dari tactical/neon aesthetic
+- Built with **Vue 3** and **Pinia**
+- Styled with **Tailwind CSS**
+- Icons from **Lucide**
+- Cloud sync powered by **Supabase**
+- Design inspired by tactical/neon aesthetic
 
 ---
 
-**Dibuat dengan ❤️ untuk disiplin finansial bulanan**
+**Built for monthly financial discipline**
 
-Versi: 3.2-TACTICAL
+Version: 3.2-TACTICAL

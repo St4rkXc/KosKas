@@ -1,3 +1,13 @@
+/**
+ * @module types/supabase
+ * @description Auto-generated TypeScript type definitions for the Supabase database schema.
+ * Defines the `Database` type with Row/Insert/Update variants for each table,
+ * plus relationship metadata. Used by the sync service for type-safe queries.
+ *
+ * Tables: `profiles`, `pockets`, `transactions`.
+ */
+
+/** JSON-serializable value type used in Supabase RPC functions. */
 export type Json =
   | string
   | number
@@ -6,6 +16,7 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
+/** Root database type mapping all schemas, tables, views, functions, and enums. */
 export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.15"

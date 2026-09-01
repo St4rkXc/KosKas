@@ -1,3 +1,13 @@
+/**
+ * @module App.vue
+ * @description Root component for KosKas. Orchestrates the entire application UI:
+ * - Auth gate (login screen vs. authenticated app)
+ * - Three views: Dashboard (pocket cards), History (transaction list), Performance (monthly analytics)
+ * - Modal management for KeypadModal, PocketSettingsModal, TransferModal
+ * - Status banners for storage/sync failures
+ * - Computed properties for pocket stats, daily Pangan targets, monthly performance comparison
+ * - Month navigation for the Performance view with archive lookup
+ */
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
 import {
