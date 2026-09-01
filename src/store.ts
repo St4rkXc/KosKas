@@ -272,11 +272,16 @@ export const useStore = defineStore("main", () => {
         { deep: true },
     );
 
+    const currentMonthTransactions = computed(() => {
+        const start = monthStart.value;
+        return transactions.value.filter(t => t.timestamp >= start);
+    });
+
     const pocketBalances = computed(() => {
         const balances: Record<string, number> = {};
         for (const p of pockets.value) balances[p.id] = p.allocation;
 
-        for (const t of transactions.value) {
+        for (const t of currentMonthTransactions.value) {
             if (t.type === "expense" && t.fromPocketId && t.fromPocketId in balances) {
                 balances[t.fromPocketId] -= t.amount;
             } else if (t.type === "transfer") {
@@ -527,10 +532,17 @@ export const useStore = defineStore("main", () => {
         transactions.value = [];
         monthStart.value = Date.now();
         if (syncEnabled.value && userId.value) {
-            try {
-                await deleteAllTransactionsRemote(userId.value);
-            } catch (e) {
-                console.warn("Failed to delete all transactions remotely:", e);
+            for (let attempt = 0; attempt < 3; attempt++) {
+                try {
+                    await deleteAllTransactionsRemote(userId.value);
+                    break;
+                } catch (e) {
+                    if (attempt === 2) {
+                        console.error("Failed to delete all transactions remotely after 3 attempts:", e);
+                    } else {
+                        await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+                    }
+                }
             }
         }
         updateRollovers();
@@ -575,6 +587,7 @@ export const useStore = defineStore("main", () => {
         syncEnabled,
         loadFromStorage,
         pocketBalances,
+        currentMonthTransactions,
         totalAllocation,
         totalRemaining,
         updateRollovers,

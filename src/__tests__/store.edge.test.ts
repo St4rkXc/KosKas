@@ -477,6 +477,7 @@ describe('Store — Edge Cases & Error Paths', () => {
         ...structuredClone(DEFAULT_POCKETS),
         { id: 'custom-1', name: 'Custom', allocation: 500000, colorClass: 'bg', icon: 'G', isSystem: false },
       ];
+      store.monthStart = Date.now() - 20000;
       store.transactions = [
         { id: 'old-expense', type: 'expense', fromPocketId: 'custom-1', amount: 100000, timestamp: Date.now() - 10000 },
       ];

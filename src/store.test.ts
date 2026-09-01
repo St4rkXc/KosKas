@@ -314,6 +314,7 @@ describe('useStore', () => {
       store.pockets = [
         { ...DEFAULT_POCKETS[0], allocation: 1000000 },
       ];
+      store.monthStart = Date.now() - 2000;
       store.transactions = [
         {
           id: 'tx-1',

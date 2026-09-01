@@ -100,7 +100,9 @@ const pocketStats = computed(() => {
     const spent: Record<string, number> = {};
     for (const p of store.pockets) spent[p.id] = 0;
 
+    const monthStart = store.monthStart;
     for (const t of store.transactions) {
+        if (t.timestamp < monthStart) continue;
         if (t.type === "expense" && t.fromPocketId && t.fromPocketId in spent) {
             spent[t.fromPocketId] += t.amount;
         }
