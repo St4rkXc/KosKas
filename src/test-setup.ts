@@ -1,5 +1,12 @@
+/**
+ * @module test-setup
+ * @description Global Vitest setup file. Configures mocks for Supabase client, sync service,
+ * structuredClone, and localStorage. Provides a MockStorage class with test helpers
+ * for inspecting and manipulating localStorage state in tests.
+ */
 import { beforeEach, afterEach, vi } from 'vitest';
 
+/** Mock Supabase client with stubbed auth and query methods. */
 vi.mock('@/lib/supabase', () => ({
   supabase: {
     auth: {

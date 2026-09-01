@@ -1,3 +1,13 @@
+/**
+ * @module components/PocketSettingsModal.vue
+ * @description Budget allocation modal for managing pocket settings.
+ * Allows editing the monthly fund (total income), setting per-pocket allocations,
+ * creating custom pockets (with icon/color pickers), and deleting custom pockets.
+ * The Saving pocket auto-receives any unallocated remainder.
+ *
+ * Props: `isOpen` — controls modal visibility.
+ * Emits: `close` — dismiss or save all allocations.
+ */
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue';
 import { Trash2, Plus, AlertCircle, PiggyBank } from 'lucide-vue-next';

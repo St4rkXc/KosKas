@@ -1,3 +1,10 @@
+/**
+ * @module vite.config
+ * @description Vite build configuration for KosKas.
+ * Plugins: Vue 3 SFC support + Tailwind CSS v4.
+ * Strips console/debugger from production builds. Resolves `@/` to `src/`.
+ * HMR and file watching are disabled when `DISABLE_HMR=true` (AI Studio agent mode).
+ */
 import tailwindcss from '@tailwindcss/vite';
 import vue from '@vitejs/plugin-vue';
 import path from 'path';
@@ -15,10 +22,7 @@ export default defineConfig(() => {
       drop: ['console', 'debugger'],
     },
     server: {
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
-      // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
   };

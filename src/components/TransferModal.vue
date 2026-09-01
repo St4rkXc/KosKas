@@ -1,3 +1,12 @@
+/**
+ * @module components/TransferModal.vue
+ * @description Inter-pocket transfer modal with source/destination selectors, numeric keypad,
+ * and optional note. Validates that the transfer amount does not exceed the source pocket's
+ * balance and that source/destination are different pockets.
+ *
+ * Props: `isOpen` — controls modal visibility.
+ * Emits: `close` — dismiss the modal.
+ */
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
 import { ArrowLeftRight } from "lucide-vue-next";

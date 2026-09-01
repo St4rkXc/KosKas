@@ -1,3 +1,12 @@
+/**
+ * @module components/KeypadModal.vue
+ * @description Expense entry modal with a numeric keypad and pocket selector.
+ * Displays the current amount, allows pocket selection (excluding Saving/Leftover),
+ * and emits the selected pocket ID and amount on save.
+ *
+ * Props: `isOpen` — controls modal visibility.
+ * Emits: `close` — dismiss the modal; `save(pocketId, amount)` — submit the expense.
+ */
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
 import { formatRupiah, vibrate, parseAmount } from "../types";

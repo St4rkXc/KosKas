@@ -1,3 +1,12 @@
+/**
+ * @module services/sync
+ * @description Remote CRUD operations for Supabase cloud synchronization.
+ * Handles conversion between the app's camelCase domain model and the database's
+ * snake_case column naming convention. Supports batch upserts (100 rows per batch)
+ * to stay within Supabase's per-request limits.
+ *
+ * All functions are user-scoped — queries include `user_id` filtering for data isolation.
+ */
 import { supabase } from '@/lib/supabase';
 import type { Pocket, Transaction } from '@/types';
 import type { Database } from '@/types/supabase';
@@ -5,6 +14,12 @@ import type { Database } from '@/types/supabase';
 type PocketRow = Database['public']['Tables']['pockets']['Row'];
 type TransactionRow = Database['public']['Tables']['transactions']['Row'];
 
+/**
+ * Fetch all pockets for a user from Supabase.
+ * @param userId - The authenticated user's UUID.
+ * @returns Array of Pocket objects mapped from database rows.
+ * @throws Supabase error if the query fails.
+ */
 export async function fetchPockets(userId: string): Promise<Pocket[]> {
   const { data, error } = await supabase
     .from('pockets')
@@ -16,6 +31,13 @@ export async function fetchPockets(userId: string): Promise<Pocket[]> {
   return (data ?? []).map(mapRowToPocket);
 }
 
+/**
+ * Fetch transactions for a user from Supabase, ordered by timestamp descending.
+ * @param userId - The authenticated user's UUID.
+ * @param limit - Maximum number of rows to fetch (default 1000).
+ * @returns Array of Transaction objects mapped from database rows.
+ * @throws Supabase error if the query fails.
+ */
 export async function fetchTransactions(userId: string, limit = 1000): Promise<Transaction[]> {
   const { data, error } = await supabase
     .from('transactions')
@@ -28,6 +50,13 @@ export async function fetchTransactions(userId: string, limit = 1000): Promise<T
   return (data ?? []).map(mapRowToTransaction);
 }
 
+/**
+ * Insert or update a single pocket in Supabase.
+ * Converts camelCase Pocket fields to snake_case database columns.
+ * @param userId - The authenticated user's UUID.
+ * @param pocket - The Pocket object to upsert.
+ * @throws Supabase error if the operation fails.
+ */
 export async function upsertPocket(userId: string, pocket: Pocket) {
   const { error } = await supabase.from('pockets').upsert({
     id: pocket.id,
@@ -42,6 +71,12 @@ export async function upsertPocket(userId: string, pocket: Pocket) {
   if (error) throw error;
 }
 
+/**
+ * Delete a single pocket from Supabase.
+ * @param userId - The authenticated user's UUID.
+ * @param pocketId - The ID of the pocket to delete.
+ * @throws Supabase error if the operation fails.
+ */
 export async function deletePocketRemote(userId: string, pocketId: string) {
   const { error } = await supabase
     .from('pockets')
@@ -51,6 +86,12 @@ export async function deletePocketRemote(userId: string, pocketId: string) {
   if (error) throw error;
 }
 
+/**
+ * Insert or update a single transaction in Supabase.
+ * @param userId - The authenticated user's UUID.
+ * @param tx - The Transaction object to upsert.
+ * @throws Supabase error if the operation fails.
+ */
 export async function upsertTransaction(userId: string, tx: Transaction) {
   const { error } = await supabase.from('transactions').upsert({
     id: tx.id,
@@ -67,6 +108,12 @@ export async function upsertTransaction(userId: string, tx: Transaction) {
   if (error) throw error;
 }
 
+/**
+ * Delete a single transaction from Supabase.
+ * @param userId - The authenticated user's UUID.
+ * @param txId - The ID of the transaction to delete.
+ * @throws Supabase error if the operation fails.
+ */
 export async function deleteTransactionRemote(userId: string, txId: string) {
   const { error } = await supabase
     .from('transactions')
@@ -76,6 +123,11 @@ export async function deleteTransactionRemote(userId: string, txId: string) {
   if (error) throw error;
 }
 
+/**
+ * Delete all transactions for a user (used during monthly reset).
+ * @param userId - The authenticated user's UUID.
+ * @throws Supabase error if the operation fails.
+ */
 export async function deleteAllTransactionsRemote(userId: string) {
   const { error } = await supabase
     .from('transactions')
@@ -84,6 +136,12 @@ export async function deleteAllTransactionsRemote(userId: string) {
   if (error) throw error;
 }
 
+/**
+ * Batch upsert all pockets for a user in a single Supabase request.
+ * @param userId - The authenticated user's UUID.
+ * @param pockets - Array of Pocket objects to upsert.
+ * @throws Supabase error if the operation fails.
+ */
 export async function upsertAllPockets(userId: string, pockets: Pocket[]) {
   const rows = pockets.map(p => ({
     id: p.id,
@@ -99,6 +157,12 @@ export async function upsertAllPockets(userId: string, pockets: Pocket[]) {
   if (error) throw error;
 }
 
+/**
+ * Batch upsert all transactions in chunks of 100 rows to stay within Supabase limits.
+ * @param userId - The authenticated user's UUID.
+ * @param txs - Array of Transaction objects to upsert.
+ * @throws Supabase error if any batch fails.
+ */
 export async function syncAllTransactions(userId: string, txs: Transaction[]) {
   const rows = txs.map(tx => ({
     id: tx.id,
@@ -121,6 +185,7 @@ export async function syncAllTransactions(userId: string, txs: Transaction[]) {
   }
 }
 
+/** Map a database pocket row (snake_case) to a domain Pocket object (camelCase). */
 function mapRowToPocket(row: PocketRow): Pocket {
   return {
     id: row.id,
@@ -132,6 +197,7 @@ function mapRowToPocket(row: PocketRow): Pocket {
   };
 }
 
+/** Map a database transaction row (snake_case) to a domain Transaction object (camelCase). */
 function mapRowToTransaction(row: TransactionRow): Transaction {
   return {
     id: row.id,
