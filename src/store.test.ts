@@ -65,9 +65,10 @@ describe('useStore', () => {
         },
       ];
 
+      const currentMonthStart = Date.now();
       mockLs.setItem('koskas_pockets', JSON.stringify(testPockets));
       mockLs.setItem('koskas_transactions', JSON.stringify(testTx));
-      mockLs.setItem('koskas_month_start', '1700000000000');
+      mockLs.setItem('koskas_month_start', currentMonthStart.toString());
 
       const store = useStore();
       await store.loadFromStorage();
@@ -76,7 +77,7 @@ describe('useStore', () => {
       expect(store.pockets[0].id).toBe('test');
       expect(store.transactions).toHaveLength(1);
       expect(store.transactions[0].id).toBe('tx-1');
-      expect(store.monthStart).toBe(1700000000000);
+      expect(store.monthStart).toBe(currentMonthStart);
       expect(store.isLoaded).toBe(true);
     });
 
@@ -133,12 +134,13 @@ describe('useStore', () => {
     });
 
     it('should migrate legacy expenses when no modern transactions exist', async () => {
+      const now = Date.now();
       const legacyExpenses = [
         {
           id: 'legacy-1',
           categoryId: 'pangan',
           amount: 25000,
-          timestamp: 1700000000000,
+          timestamp: now,
           note: 'Nasi Goreng',
         },
       ];
@@ -174,9 +176,10 @@ describe('useStore', () => {
     });
 
     it('should handle legacy expenses with missing fields gracefully', async () => {
+      const now = Date.now();
       const legacyExpenses = [
-        { amount: 10000, timestamp: 1700000000000 },
-        { id: 'good', categoryId: 'kos', amount: 20000, timestamp: 1700000000000 },
+        { amount: 10000, timestamp: now },
+        { id: 'good', categoryId: 'kos', amount: 20000, timestamp: now },
       ];
       mockLs.setItem('koskas_expenses', JSON.stringify(legacyExpenses));
 
@@ -195,10 +198,11 @@ describe('useStore', () => {
     });
 
     it('should parse monthStart correctly from localStorage', async () => {
-      mockLs.setItem('koskas_month_start', '1609459200000');
+      const currentMonthTimestamp = Date.now();
+      mockLs.setItem('koskas_month_start', currentMonthTimestamp.toString());
       const store = useStore();
       await store.loadFromStorage();
-      expect(store.monthStart).toBe(1609459200000);
+      expect(store.monthStart).toBe(currentMonthTimestamp);
     });
 
     it('should default monthStart to Date.now() when not stored', async () => {
@@ -310,6 +314,7 @@ describe('useStore', () => {
       store.pockets = [
         { ...DEFAULT_POCKETS[0], allocation: 1000000 },
       ];
+      store.monthStart = Date.now() - 2000;
       store.transactions = [
         {
           id: 'tx-1',
@@ -1011,51 +1016,56 @@ describe('useStore', () => {
   // ─── updateRollovers ─────────────────────────────────────────────
 
   describe('updateRollovers', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
     it('should not create rollover for today', () => {
       const store = useStore();
+      const year = 2026;
+      const month = 8;
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(year, month, 15, 12, 0, 0));
+
       store.pockets = structuredClone(DEFAULT_POCKETS);
-      store.monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
+      store.monthStart = new Date(year, month, 1).getTime();
 
       store.updateRollovers();
 
-      const today = new Date().getDate().toString().padStart(2, '0');
-      const month = (new Date().getMonth() + 1).toString().padStart(2, '0');
-      const year = new Date().getFullYear();
       const todayRollover = store.transactions.find(
-        (t) => t.isRollover && t.rolloverDate === `${year}-${month}-${today}`,
+        (t) => t.isRollover && t.rolloverDate === `${year}-09-15`,
       );
       expect(todayRollover).toBeUndefined();
     });
 
     it('should create rollover for past days when there is leftover', () => {
       const store = useStore();
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = now.getMonth();
+      const year = 2026;
+      const month = 8;
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(year, month, 15, 12, 0, 0));
 
       // Set month start to the 1st of current month
       store.monthStart = new Date(year, month, 1).getTime();
       store.pockets = structuredClone(DEFAULT_POCKETS);
       // Pangan allocation: 1500000
-      // If no expenses, every past day should have rollover
+      // If no expenses, every past day (days 1 through 14) should have rollover
 
       store.updateRollovers();
 
-      const todayDate = now.getDate();
-      // Should have rollovers for days 1 through todayDate-1
       const rollovers = store.transactions.filter((t) => t.isRollover);
-      expect(rollovers.length).toBe(todayDate - 1);
+      expect(rollovers.length).toBe(14);
     });
 
     it('should not create rollover when daily spending equals or exceeds daily limit', () => {
       const store = useStore();
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = now.getMonth();
+      const year = 2026;
+      const month = 8;
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(year, month, 15, 12, 0, 0));
 
       store.monthStart = new Date(year, month, 1).getTime();
       store.pockets = structuredClone(DEFAULT_POCKETS);
-      // Pangan: 1500000, totalDays varies, let's say 30 => dailyLimit = 50000
       // Spend more than daily limit on day 1
       const day1Timestamp = new Date(year, month, 1, 12, 0, 0).getTime();
       store.transactions = [
@@ -1070,18 +1080,18 @@ describe('useStore', () => {
 
       store.updateRollovers();
 
-      const padMonth = (month + 1).toString().padStart(2, '0');
       const day1Rollover = store.transactions.find(
-        (t) => t.isRollover && t.rolloverDate === `${year}-${padMonth}-01`,
+        (t) => t.isRollover && t.rolloverDate === `${year}-09-01`,
       );
       expect(day1Rollover).toBeUndefined();
     });
 
     it('should update existing rollover instead of creating duplicate', () => {
       const store = useStore();
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = now.getMonth();
+      const year = 2026;
+      const month = 8;
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(year, month, 15, 12, 0, 0));
 
       store.monthStart = new Date(year, month, 1).getTime();
       store.pockets = structuredClone(DEFAULT_POCKETS);
@@ -1089,9 +1099,8 @@ describe('useStore', () => {
       // First run creates rollovers
       store.updateRollovers();
 
-      const padMonth = (month + 1).toString().padStart(2, '0');
       const day1RolloverBefore = store.transactions.find(
-        (t) => t.isRollover && t.rolloverDate === `${year}-${padMonth}-01`,
+        (t) => t.isRollover && t.rolloverDate === `${year}-09-01`,
       );
       expect(day1RolloverBefore).toBeDefined();
       const initialId = day1RolloverBefore?.id;
@@ -1100,7 +1109,7 @@ describe('useStore', () => {
       store.updateRollovers();
 
       const day1Rollovers = store.transactions.filter(
-        (t) => t.isRollover && t.rolloverDate === `${year}-${padMonth}-01`,
+        (t) => t.isRollover && t.rolloverDate === `${year}-09-01`,
       );
       expect(day1Rollovers).toHaveLength(1);
       expect(day1Rollovers[0].id).toBe(initialId);
@@ -1108,9 +1117,10 @@ describe('useStore', () => {
 
     it('should remove existing rollover when leftover becomes zero', () => {
       const store = useStore();
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = now.getMonth();
+      const year = 2026;
+      const month = 8;
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(year, month, 15, 12, 0, 0));
 
       store.monthStart = new Date(year, month, 1).getTime();
       store.pockets = structuredClone(DEFAULT_POCKETS);
@@ -1118,9 +1128,8 @@ describe('useStore', () => {
       // Create rollovers
       store.updateRollovers();
 
-      const padMonth = (month + 1).toString().padStart(2, '0');
       const day1Rollover = store.transactions.find(
-        (t) => t.isRollover && t.rolloverDate === `${year}-${padMonth}-01`,
+        (t) => t.isRollover && t.rolloverDate === `${year}-09-01`,
       );
       expect(day1Rollover).toBeDefined();
 
@@ -1139,16 +1148,17 @@ describe('useStore', () => {
       store.updateRollovers();
 
       const remainingRollover = store.transactions.find(
-        (t) => t.isRollover && t.rolloverDate === `${year}-${padMonth}-01`,
+        (t) => t.isRollover && t.rolloverDate === `${year}-09-01`,
       );
       expect(remainingRollover).toBeUndefined();
     });
 
     it('should insert rollover transactions in sorted position', () => {
       const store = useStore();
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = now.getMonth();
+      const year = 2026;
+      const month = 8;
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(year, month, 15, 12, 0, 0));
 
       store.monthStart = new Date(year, month, 1).getTime();
       store.pockets = structuredClone(DEFAULT_POCKETS);
@@ -1167,9 +1177,6 @@ describe('useStore', () => {
 
       store.updateRollovers();
 
-      // Verify transactions are sorted by timestamp (descending for newest first via unshift,
-      // but rollovers use insertSorted which places them by timestamp)
-      // Rollover for day 5 has timestamp = endOfDay + 1
       const day5End = new Date(year, month, 5, 23, 59, 59, 999).getTime() + 1;
       const day5Rollover = store.transactions.find(
         (t) => t.isRollover && t.rolloverDate && t.rolloverDate.includes('-05'),
@@ -1191,9 +1198,11 @@ describe('useStore', () => {
 
     it('should calculate daily leftover correctly', () => {
       const store = useStore();
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = now.getMonth();
+      const year = 2026;
+      const month = 8;
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(year, month, 15, 12, 0, 0));
+
       const totalDays = new Date(year, month + 1, 0).getDate();
 
       store.monthStart = new Date(year, month, 1).getTime();
@@ -1215,13 +1224,104 @@ describe('useStore', () => {
 
       store.updateRollovers();
 
-      const padMonth = (month + 1).toString().padStart(2, '0');
       const day1Rollover = store.transactions.find(
-        (t) => t.isRollover && t.rolloverDate === `${year}-${padMonth}-01`,
+        (t) => t.isRollover && t.rolloverDate === `${year}-09-01`,
       );
 
       expect(day1Rollover).toBeDefined();
       expect(day1Rollover?.amount).toBe(Math.ceil(dailyLimit / 2));
+    });
+  });
+
+  // ─── checkMonthTransition ─────────────────────────────────────────
+
+  describe('checkMonthTransition', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('should automatically archive and reset when monthStart is from previous month', async () => {
+      const store = useStore();
+      store.pockets = structuredClone(DEFAULT_POCKETS);
+      // Previous month: August 2026
+      store.monthStart = new Date(2026, 7, 1).getTime();
+      store.transactions = [
+        {
+          id: 'aug-tx-1',
+          type: 'expense',
+          fromPocketId: POCKET_IDS.PANGAN,
+          amount: 50000,
+          timestamp: new Date(2026, 7, 15).getTime(),
+        },
+      ];
+
+      // Current time: September 1, 2026
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2026, 8, 1, 10, 0, 0));
+
+      await store.checkMonthTransition();
+
+      // Transactions should be reset
+      expect(store.transactions).toHaveLength(0);
+      expect(store.pocketBalances[POCKET_IDS.PANGAN]).toBe(1500000);
+
+      // Archives should contain previous month data
+      const setItemSpy = (globalThis as any).__setItemSpy();
+      const archivesSetCall = setItemSpy.mock.calls.find(
+        (call: unknown[]) => (call as [string])[0] === 'koskas_archives',
+      );
+      expect(archivesSetCall).toBeDefined();
+      const archives = JSON.parse((archivesSetCall as [string, string])[1]);
+      expect(archives[0].transactions[0].id).toBe('aug-tx-1');
+    });
+
+    it('should not reset when monthStart is in the current month', async () => {
+      const store = useStore();
+      store.pockets = structuredClone(DEFAULT_POCKETS);
+      // Current month: September 1, 2026
+      store.monthStart = new Date(2026, 8, 1).getTime();
+      store.transactions = [
+        {
+          id: 'sep-tx-1',
+          type: 'expense',
+          fromPocketId: POCKET_IDS.PANGAN,
+          amount: 20000,
+          timestamp: new Date(2026, 8, 1).getTime(),
+        },
+      ];
+
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2026, 8, 5, 10, 0, 0));
+
+      await store.checkMonthTransition();
+
+      expect(store.transactions).toHaveLength(1);
+      expect(store.transactions[0].id).toBe('sep-tx-1');
+    });
+
+    it('should reset across year boundary (December -> January)', async () => {
+      const store = useStore();
+      store.pockets = structuredClone(DEFAULT_POCKETS);
+      // December 2025
+      store.monthStart = new Date(2025, 11, 1).getTime();
+      store.transactions = [
+        {
+          id: 'dec-tx',
+          type: 'expense',
+          fromPocketId: POCKET_IDS.PANGAN,
+          amount: 30000,
+          timestamp: new Date(2025, 11, 20).getTime(),
+        },
+      ];
+
+      // January 1, 2026
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2026, 0, 1, 9, 0, 0));
+
+      await store.checkMonthTransition();
+
+      expect(store.transactions).toHaveLength(0);
+      expect(store.pocketBalances[POCKET_IDS.PANGAN]).toBe(1500000);
     });
   });
 

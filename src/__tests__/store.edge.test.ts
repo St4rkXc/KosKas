@@ -362,6 +362,54 @@ describe('Store — Edge Cases & Error Paths', () => {
       store.resetMonth();
       expect(store.transactions).toHaveLength(0);
     });
+
+    it('should auto-reset during loadFromStorage when profile month_start is from previous month', async () => {
+      // Setup previous month profile
+      const prevMonth = new Date(2026, 6, 1).getTime(); // July 2026
+      const remoteTxs = [
+        { id: 'remote-1', type: 'expense' as const, fromPocketId: 'pangan', amount: 50000, timestamp: prevMonth },
+      ];
+
+      (supabase.auth.getSession as ReturnType<typeof vi.fn>).mockResolvedValue({
+        data: { session: { user: { id: 'user-123' }, access_token: 'tok' } },
+      });
+      (fetchPockets as ReturnType<typeof vi.fn>).mockResolvedValue(structuredClone(DEFAULT_POCKETS));
+      (fetchTransactions as ReturnType<typeof vi.fn>).mockResolvedValue(remoteTxs);
+      mockProfileFetch({ month_start: prevMonth });
+
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2026, 7, 1, 12, 0, 0)); // August 2026
+
+      const store = useStore();
+      await store.loadFromStorage();
+
+      expect(deleteAllTransactionsRemote).toHaveBeenCalledWith('user-123');
+      expect(store.transactions).toHaveLength(0);
+      expect(store.pocketBalances[POCKET_IDS.PANGAN]).toBe(1500000);
+
+      vi.useRealTimers();
+    });
+
+    it('should auto-reset in updateRollovers if month transitions while app is active', () => {
+      const store = useStore();
+      store.pockets = structuredClone(DEFAULT_POCKETS);
+      // July 2026
+      store.monthStart = new Date(2026, 6, 1).getTime();
+      store.transactions = [
+        { id: 'tx-old', type: 'expense', fromPocketId: 'pangan', amount: 100000, timestamp: new Date(2026, 6, 10).getTime() },
+      ];
+
+      // Jump to August 1, 2026
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2026, 7, 1, 10, 0, 0));
+
+      store.updateRollovers();
+
+      expect(store.transactions).toHaveLength(0);
+      expect(store.pocketBalances[POCKET_IDS.PANGAN]).toBe(1500000);
+
+      vi.useRealTimers();
+    });
   });
 
   // ─── deletePocket Edge Cases ────────────────────────────────────────────
@@ -429,6 +477,7 @@ describe('Store — Edge Cases & Error Paths', () => {
         ...structuredClone(DEFAULT_POCKETS),
         { id: 'custom-1', name: 'Custom', allocation: 500000, colorClass: 'bg', icon: 'G', isSystem: false },
       ];
+      store.monthStart = Date.now() - 20000;
       store.transactions = [
         { id: 'old-expense', type: 'expense', fromPocketId: 'custom-1', amount: 100000, timestamp: Date.now() - 10000 },
       ];
@@ -558,7 +607,8 @@ describe('Store — Edge Cases & Error Paths', () => {
       });
       (fetchPockets as ReturnType<typeof vi.fn>).mockResolvedValueOnce(remotePockets);
       (fetchTransactions as ReturnType<typeof vi.fn>).mockResolvedValueOnce(remoteTxs);
-      mockProfileFetch({ month_start: 1700000000000 });
+      const testMonthStart = Date.now();
+      mockProfileFetch({ month_start: testMonthStart });
 
       const store = useStore();
       await store.loadFromStorage();
@@ -567,7 +617,7 @@ describe('Store — Edge Cases & Error Paths', () => {
       expect(store.pockets[0].id).toBe('remote-p1');
       expect(store.transactions).toHaveLength(1);
       expect(store.transactions[0].id).toBe('remote-tx-1');
-      expect(store.monthStart).toBe(1700000000000);
+      expect(store.monthStart).toBe(testMonthStart);
       expect(store.syncEnabled).toBe(true);
     });
 
@@ -607,17 +657,18 @@ describe('Store — Edge Cases & Error Paths', () => {
     });
 
     it('should use profile month_start from Supabase', async () => {
+      const testMonthStart = Date.now();
       (supabase.auth.getSession as ReturnType<typeof vi.fn>).mockResolvedValue({
         data: { session: { user: { id: 'user-1' }, access_token: 'tok' } },
       });
       (fetchPockets as ReturnType<typeof vi.fn>).mockResolvedValue([]);
       (fetchTransactions as ReturnType<typeof vi.fn>).mockResolvedValue([]);
-      mockProfileFetch({ month_start: 1609459200000 });
+      mockProfileFetch({ month_start: testMonthStart });
 
       const store = useStore();
       await store.loadFromStorage();
 
-      expect(store.monthStart).toBe(1609459200000);
+      expect(store.monthStart).toBe(testMonthStart);
     });
 
     it('should default monthStart to Date.now() when profile has no month_start', async () => {

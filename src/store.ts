@@ -86,13 +86,6 @@ export const useStore = defineStore("main", () => {
             }
         }
 
-        if (storedMonthStart) {
-            const parsed = parseInt(storedMonthStart, 10);
-            monthStart.value = Number.isFinite(parsed) ? parsed : Date.now();
-        } else {
-            monthStart.value = Date.now();
-        }
-
         if (storedTransactions) {
             try {
                 const parsed = JSON.parse(storedTransactions);
@@ -126,6 +119,16 @@ export const useStore = defineStore("main", () => {
                     console.error("Failed to migrate legacy expenses");
                 }
             }
+        }
+
+        if (storedMonthStart) {
+            const parsed = parseInt(storedMonthStart, 10);
+            monthStart.value = Number.isFinite(parsed) ? parsed : Date.now();
+        } else if (transactions.value.length > 0) {
+            const oldestTimestamp = Math.min(...transactions.value.map((t) => t.timestamp));
+            monthStart.value = Number.isFinite(oldestTimestamp) ? oldestTimestamp : Date.now();
+        } else {
+            monthStart.value = Date.now();
         }
     }
 
@@ -177,7 +180,14 @@ export const useStore = defineStore("main", () => {
                     .eq('id', session.user.id)
                     .single();
 
-                monthStart.value = profile?.month_start ?? Date.now();
+                if (profile?.month_start && Number.isFinite(profile.month_start)) {
+                    monthStart.value = profile.month_start;
+                } else if (transactions.value.length > 0) {
+                    const oldestTimestamp = Math.min(...transactions.value.map((t) => t.timestamp));
+                    monthStart.value = Number.isFinite(oldestTimestamp) ? oldestTimestamp : Date.now();
+                } else {
+                    monthStart.value = Date.now();
+                }
                 syncFailed.value = false;
             } catch (err) {
                 console.error('Supabase fetch failed, falling back to localStorage:', err);
@@ -189,7 +199,20 @@ export const useStore = defineStore("main", () => {
         }
 
         isLoaded.value = true;
+        await checkMonthTransition();
         updateRollovers();
+    }
+
+    async function checkMonthTransition() {
+        const now = new Date();
+        const start = new Date(monthStart.value);
+        const isMonthStartOld =
+            now.getFullYear() > start.getFullYear() ||
+            (now.getFullYear() === start.getFullYear() && now.getMonth() > start.getMonth());
+
+        if (isMonthStartOld) {
+            await resetMonth();
+        }
     }
 
     let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -224,6 +247,19 @@ export const useStore = defineStore("main", () => {
                 syncToSupabase();
             }
         });
+        window.addEventListener('focus', () => {
+            if (isLoaded.value) {
+                checkMonthTransition();
+            }
+        });
+    }
+
+    if (typeof document !== 'undefined') {
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && isLoaded.value) {
+                checkMonthTransition();
+            }
+        });
     }
 
     watch(
@@ -236,11 +272,16 @@ export const useStore = defineStore("main", () => {
         { deep: true },
     );
 
+    const currentMonthTransactions = computed(() => {
+        const start = monthStart.value;
+        return transactions.value.filter(t => t.timestamp >= start);
+    });
+
     const pocketBalances = computed(() => {
         const balances: Record<string, number> = {};
         for (const p of pockets.value) balances[p.id] = p.allocation;
 
-        for (const t of transactions.value) {
+        for (const t of currentMonthTransactions.value) {
             if (t.type === "expense" && t.fromPocketId && t.fromPocketId in balances) {
                 balances[t.fromPocketId] -= t.amount;
             } else if (t.type === "transfer") {
@@ -275,9 +316,19 @@ export const useStore = defineStore("main", () => {
     }
 
     function updateRollovers() {
+        const now = new Date();
+        const start = new Date(monthStart.value);
+        const isMonthStartOld =
+            now.getFullYear() > start.getFullYear() ||
+            (now.getFullYear() === start.getFullYear() && now.getMonth() > start.getMonth());
+
+        if (isMonthStartOld) {
+            resetMonth();
+            return;
+        }
+
         suppressWatch.value = true;
         try {
-            const now = new Date();
             const year = now.getFullYear();
             const month = now.getMonth();
             const todayDate = now.getDate();
@@ -481,10 +532,17 @@ export const useStore = defineStore("main", () => {
         transactions.value = [];
         monthStart.value = Date.now();
         if (syncEnabled.value && userId.value) {
-            try {
-                await deleteAllTransactionsRemote(userId.value);
-            } catch (e) {
-                console.warn("Failed to delete all transactions remotely:", e);
+            for (let attempt = 0; attempt < 3; attempt++) {
+                try {
+                    await deleteAllTransactionsRemote(userId.value);
+                    break;
+                } catch (e) {
+                    if (attempt === 2) {
+                        console.error("Failed to delete all transactions remotely after 3 attempts:", e);
+                    } else {
+                        await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+                    }
+                }
             }
         }
         updateRollovers();
@@ -512,6 +570,8 @@ export const useStore = defineStore("main", () => {
             await loadFromStorage();
         } else {
             resetState();
+            loadFromLocalStorage();
+            await checkMonthTransition();
             isLoaded.value = true;
         }
     });
@@ -527,9 +587,11 @@ export const useStore = defineStore("main", () => {
         syncEnabled,
         loadFromStorage,
         pocketBalances,
+        currentMonthTransactions,
         totalAllocation,
         totalRemaining,
         updateRollovers,
+        checkMonthTransition,
         addExpense,
         addTransfer,
         removeTransaction,
