@@ -189,7 +189,20 @@ export const useStore = defineStore("main", () => {
         }
 
         isLoaded.value = true;
+        await checkMonthTransition();
         updateRollovers();
+    }
+
+    async function checkMonthTransition() {
+        const now = new Date();
+        const start = new Date(monthStart.value);
+        const isNewMonth =
+            now.getFullYear() > start.getFullYear() ||
+            (now.getFullYear() === start.getFullYear() && now.getMonth() > start.getMonth());
+
+        if (isNewMonth) {
+            await resetMonth();
+        }
     }
 
     let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -222,6 +235,19 @@ export const useStore = defineStore("main", () => {
         window.addEventListener('online', () => {
             if (syncEnabled.value && userId.value && syncFailed.value) {
                 syncToSupabase();
+            }
+        });
+        window.addEventListener('focus', () => {
+            if (isLoaded.value) {
+                checkMonthTransition();
+            }
+        });
+    }
+
+    if (typeof document !== 'undefined') {
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && isLoaded.value) {
+                checkMonthTransition();
             }
         });
     }
@@ -275,9 +301,19 @@ export const useStore = defineStore("main", () => {
     }
 
     function updateRollovers() {
+        const now = new Date();
+        const start = new Date(monthStart.value);
+        const isNewMonth =
+            now.getFullYear() > start.getFullYear() ||
+            (now.getFullYear() === start.getFullYear() && now.getMonth() > start.getMonth());
+
+        if (isNewMonth) {
+            resetMonth();
+            return;
+        }
+
         suppressWatch.value = true;
         try {
-            const now = new Date();
             const year = now.getFullYear();
             const month = now.getMonth();
             const todayDate = now.getDate();
@@ -530,6 +566,7 @@ export const useStore = defineStore("main", () => {
         totalAllocation,
         totalRemaining,
         updateRollovers,
+        checkMonthTransition,
         addExpense,
         addTransfer,
         removeTransaction,
