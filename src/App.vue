@@ -259,7 +259,26 @@ function getMonthEnd(date: Date): number {
 function getTransactionsForMonth(date: Date) {
     const start = getMonthStart(date);
     const end = getMonthEnd(date);
-    return store.transactions.filter((t) => t.timestamp >= start && t.timestamp <= end);
+    const active = store.transactions.filter((t) => t.timestamp >= start && t.timestamp <= end);
+    if (active.length > 0 || isCurrentMonth(date)) {
+        return active;
+    }
+
+    try {
+        const archives = JSON.parse(localStorage.getItem("koskas_archives") || "[]");
+        for (const arch of archives) {
+            const archTxs = (arch.transactions || []).filter(
+                (t: any) => t.timestamp >= start && t.timestamp <= end
+            );
+            if (archTxs.length > 0) {
+                return archTxs;
+            }
+        }
+    } catch (e) {
+        console.warn("Failed to read archives:", e);
+    }
+
+    return [];
 }
 
 function getPreviousMonth(date: Date): Date {

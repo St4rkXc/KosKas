@@ -134,12 +134,13 @@ describe('useStore', () => {
     });
 
     it('should migrate legacy expenses when no modern transactions exist', async () => {
+      const now = Date.now();
       const legacyExpenses = [
         {
           id: 'legacy-1',
           categoryId: 'pangan',
           amount: 25000,
-          timestamp: 1700000000000,
+          timestamp: now,
           note: 'Nasi Goreng',
         },
       ];
@@ -175,9 +176,10 @@ describe('useStore', () => {
     });
 
     it('should handle legacy expenses with missing fields gracefully', async () => {
+      const now = Date.now();
       const legacyExpenses = [
-        { amount: 10000, timestamp: 1700000000000 },
-        { id: 'good', categoryId: 'kos', amount: 20000, timestamp: 1700000000000 },
+        { amount: 10000, timestamp: now },
+        { id: 'good', categoryId: 'kos', amount: 20000, timestamp: now },
       ];
       mockLs.setItem('koskas_expenses', JSON.stringify(legacyExpenses));
 
