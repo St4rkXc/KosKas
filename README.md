@@ -331,6 +331,3 @@ For questions or issues, please open an issue on the GitHub repository.
 
 ---
 
-**Built for monthly financial discipline**
-
-Version: 3.2-TACTICAL
