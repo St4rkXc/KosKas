@@ -674,6 +674,10 @@ loadFromStorage() [async]
   │   │
   │   ├─ IF remote data exists:
   │   │   └─ Load remote data into store refs
+  │   │       (Note: may include stale transactions from previous months
+  │   │        if remote delete failed during a prior month reset — these
+  │   │        are safely excluded from balance calculations by the
+  │   │        currentMonthTransactions filter on monthStart)
   │   │
   │   └─ IF no remote data but localStorage has data:
   │       ├─ Upload local data to Supabase
@@ -683,6 +687,10 @@ loadFromStorage() [async]
   │   └─ Fall back to localStorage
   │
   ├─ Validate loaded data with type guards
+  │
+  ├─ checkMonthTransition()
+  │   └─ IF loaded month_start < current month:
+  │       └─ resetMonth() (with retry on remote delete)
   │
   ├─ isLoaded = true
   └─ updateRollovers()
@@ -723,6 +731,7 @@ The store uses the **composition API pattern** (not options pattern) via `define
 │  └───────────────────────────────────────────────────────────────┘  │
 │                                                                      │
 │  ┌─ Computed Properties ────────────────────────────────────────┐  │
+│  │  currentMonthTransactions: ComputedRef<Transaction[]>         │ │
 │  │  pocketBalances: Record<string, number>    // Balance per pocket│ │
 │  │  totalAllocation: number                   // Total allocation  │ │
 │  │  totalRemaining: number                    // Total remaining   │ │
@@ -762,21 +771,34 @@ The store uses the **composition API pattern** (not options pattern) via `define
 
 ### Computed Properties
 
+#### `currentMonthTransactions`
+
+Filters `transactions.value` to include only transactions where `timestamp >= monthStart`. This ensures that stale transactions from previous months (e.g., leaked due to a failed remote delete during month reset) never affect current-month balance calculations.
+
+```typescript
+const currentMonthTransactions = computed(() =>
+    transactions.value.filter(t => t.timestamp >= monthStart.value)
+);
+```
+
+**Exported** from the store for reuse in components (e.g., `App.vue`'s `pocketStats`).
+
 #### `pocketBalances`
 
-Calculates each pocket's balance in real-time.
+Calculates each pocket's balance in real-time using `currentMonthTransactions` (filtered by `monthStart`).
 
 ```
 balance(pocket) = allocation
-                + Σ(transfers TO pocket)
-                - Σ(transfers FROM pocket)
-                - Σ(expenses FROM pocket)
+                + Σ(transfers TO pocket)    // current month only
+                - Σ(transfers FROM pocket)  // current month only
+                - Σ(expenses FROM pocket)   // current month only
 ```
 
 **Implementation detail:**
-- Single-pass aggregation over all transactions (optimized from original 3 scans per pocket)
+- Single-pass aggregation over `currentMonthTransactions` (filtered by `monthStart`)
 - Return type: `Record<string, number>` — keyed by `pocket.id`
-- **Performance:** O(P + T) where P = pocket count, T = transaction count
+- **Performance:** O(P + T_current) where P = pocket count, T_current = current-month transaction count
+- **Resilience:** Even if stale transactions from a previous month exist in `transactions.value` (e.g., remote delete failed during month reset), they are excluded from balance calculations by the `monthStart` filter
 
 #### `totalAllocation`
 
@@ -1272,7 +1294,13 @@ resetMonth():
     3. Save archives back to localStorage
 
     4. IF syncEnabled:
-       deleteAllTransactionsRemote(userId)  // Clear remote transactions
+       deleteAllTransactionsRemote(userId) with retry logic:
+         - Up to 3 attempts with exponential backoff
+         - Delays: 1s, 2s, 3s between retries
+         - Failures after all retries are logged but do not block reset
+         (Resilience: even if remote delete ultimately fails, stale
+          transactions are excluded from balances via monthStart filter
+          in currentMonthTransactions / pocketBalances)
 
     5. Reset store state:
        transactions.value = []
@@ -2027,6 +2055,9 @@ The following issues were identified and fixed in earlier versions:
 | 17 | Console logs not stripped in production builds | ✅ Fixed |
 | 18 | Vulnerable `nanoid` / `postcss` dependencies | ✅ Fixed |
 | 19 | `handle_new_user()` search_path hijacking — `SET search_path = ''` documented | ✅ Fixed |
+| 20 | Month-reset stale data leak — `pocketBalances` showed previous-month balances when `deleteAllTransactionsRemote()` failed silently during month transition | ✅ Fixed (Sep 2026) |
+
+**Fix for #20:** `pocketBalances` and `pocketStats` now filter transactions by `monthStart` via the `currentMonthTransactions` computed property, so stale transactions from previous months are always excluded regardless of remote delete success. Additionally, `resetMonth()` now retries `deleteAllTransactionsRemote()` up to 3 times with exponential backoff (1s, 2s, 3s) instead of failing silently on the first attempt.
 
 ### Current Considerations
 
@@ -2096,5 +2127,5 @@ Custom breakpoints are defined in `AGENT.md` as guidelines but not fully wired i
 
 ---
 
-**Documentation last updated: August 2026**
+**Documentation last updated: September 2026**
 **KosKas Version: 3.2-TACTICAL**

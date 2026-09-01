@@ -170,6 +170,8 @@ Untuk memulai bulan baru:
 
 **Peringatan:** Semua transaksi dan transfer akan dihapus. Pocket settings tetap tersimpan.
 
+**Catatan Teknis:** Proses reset melakukan archive data bulan sebelumnya, kemudian menghapus transaksi secara lokal dan remote. Penghapusan transaksi remote memiliki retry logic (hingga 3 kali dengan exponential backoff) untuk menangani kegagalan jaringan. Selain itu, perhitungan saldo sekarang memfilter transaksi berdasarkan bulan berjalan, sehingga data lama dari bulan sebelumnya tidak akan memengaruhi saldo meskipun penghapusan remote gagal.
+
 ### Melihat Riwayat Transaksi
 
 1. Klik ikon **Settings** di header
@@ -307,14 +309,14 @@ KosKas dapat di-deploy ke Google AI Studio:
 
 ## 🐛 Known Limitations
 
-### 1. Bug pada `deletePocket`
-Saat menghapus pocket, transfer untuk preserve balance dapat ter-korupsi karena `fromPocketId` di-rewrite. Ini menyebabkan saldo yang ditransfer tidak akurat.
+### 1. ~~Bug pada `deletePocket`~~ — ✅ Sudah Diperbaiki
+Preservation transfer sekarang dilindungi dari rewrite `fromPocketId`. Bug sudah diperbaiki pada versi sebelumnya.
 
 ### 2. Performa Rollover Calculation
 Fungsi `updateRollovers` memiliki kompleksitas O(days × transactions) dan dijalankan pada setiap mutasi. Pada mobile device dengan banyak transaksi, dapat menyebabkan lag.
 
-### 3. Triple Scan pada `pocketBalances`
-Computed property `pocketBalances` melakukan 3 full scan transaksi per pocket setiap kali diakses. Dengan 7 pocket dan 100 transaksi, ini berarti 2100 iterasi.
+### 3. ~~Triple Scan pada `pocketBalances`~~ — ✅ Sudah Diperbaiki
+`pocketBalances` sekarang menggunakan algoritma single-pass (O(P + T)) dan memfilter transaksi berdasarkan `monthStart` melalui computed property `currentMonthTransactions`. Hanya transaksi bulan berjalan yang dihitung, sehingga transaksi lama dari bulan sebelumnya tidak memengaruhi saldo.
 
 ### 4. Tidak Ada Batas Input pada Keypad
 Input numerik pada keypad tidak memiliki batas panjang, berpotensi menyebabkan integer overflow pada angka yang sangat besar.
@@ -344,9 +346,7 @@ Computed property `totalSpent` didefinisikan di store tetapi tidak digunakan di 
 ## 🔮 Future Improvements
 
 ### High Priority
-- **Fix `deletePocket` bug** — Perbaiki logika transfer balance preservation
 - **Optimize `updateRollovers`** — Gunakan memoization atau virtual scrolling untuk performa
-- **Optimize `pocketBalances`** — Implementasi single-pass algorithm untuk kalkulasi balance
 - **Add input length cap** — Batasi input keypad ke 12 digit untuk mencegah overflow
 - **Fix Windows compatibility** — Ganti script `clean` dengan cross-platform solution (rimraf)
 
