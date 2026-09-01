@@ -86,13 +86,6 @@ export const useStore = defineStore("main", () => {
             }
         }
 
-        if (storedMonthStart) {
-            const parsed = parseInt(storedMonthStart, 10);
-            monthStart.value = Number.isFinite(parsed) ? parsed : Date.now();
-        } else {
-            monthStart.value = Date.now();
-        }
-
         if (storedTransactions) {
             try {
                 const parsed = JSON.parse(storedTransactions);
@@ -126,6 +119,16 @@ export const useStore = defineStore("main", () => {
                     console.error("Failed to migrate legacy expenses");
                 }
             }
+        }
+
+        if (storedMonthStart) {
+            const parsed = parseInt(storedMonthStart, 10);
+            monthStart.value = Number.isFinite(parsed) ? parsed : Date.now();
+        } else if (transactions.value.length > 0) {
+            const oldestTimestamp = Math.min(...transactions.value.map((t) => t.timestamp));
+            monthStart.value = Number.isFinite(oldestTimestamp) ? oldestTimestamp : Date.now();
+        } else {
+            monthStart.value = Date.now();
         }
     }
 
@@ -177,7 +180,14 @@ export const useStore = defineStore("main", () => {
                     .eq('id', session.user.id)
                     .single();
 
-                monthStart.value = profile?.month_start ?? Date.now();
+                if (profile?.month_start && Number.isFinite(profile.month_start)) {
+                    monthStart.value = profile.month_start;
+                } else if (transactions.value.length > 0) {
+                    const oldestTimestamp = Math.min(...transactions.value.map((t) => t.timestamp));
+                    monthStart.value = Number.isFinite(oldestTimestamp) ? oldestTimestamp : Date.now();
+                } else {
+                    monthStart.value = Date.now();
+                }
                 syncFailed.value = false;
             } catch (err) {
                 console.error('Supabase fetch failed, falling back to localStorage:', err);
@@ -196,11 +206,11 @@ export const useStore = defineStore("main", () => {
     async function checkMonthTransition() {
         const now = new Date();
         const start = new Date(monthStart.value);
-        const isNewMonth =
+        const isMonthStartOld =
             now.getFullYear() > start.getFullYear() ||
             (now.getFullYear() === start.getFullYear() && now.getMonth() > start.getMonth());
 
-        if (isNewMonth) {
+        if (isMonthStartOld) {
             await resetMonth();
         }
     }
@@ -303,11 +313,11 @@ export const useStore = defineStore("main", () => {
     function updateRollovers() {
         const now = new Date();
         const start = new Date(monthStart.value);
-        const isNewMonth =
+        const isMonthStartOld =
             now.getFullYear() > start.getFullYear() ||
             (now.getFullYear() === start.getFullYear() && now.getMonth() > start.getMonth());
 
-        if (isNewMonth) {
+        if (isMonthStartOld) {
             resetMonth();
             return;
         }
@@ -548,6 +558,8 @@ export const useStore = defineStore("main", () => {
             await loadFromStorage();
         } else {
             resetState();
+            loadFromLocalStorage();
+            await checkMonthTransition();
             isLoaded.value = true;
         }
     });
