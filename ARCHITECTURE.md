@@ -487,7 +487,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 |--------|------|----------|---------|-------------|
 | `id` | `uuid` | NOT NULL | — | Primary key, mirrors `auth.users.id` |
 | `display_name` | `text` | nullable | — | User display name (reserved, not yet used by app) |
-| `monthly_fund` | `bigint` | nullable | `0` | Monthly fund amount (reserved, not yet used by app) |
+| `monthly_fund` | `bigint` | nullable | `0` | Monthly fund amount (synced from `totalAllocation` computed) |
 | `month_start` | `bigint` | NOT NULL | — | Unix timestamp (ms) of when the current budget month started |
 | `created_at` | `timestamptz` | nullable | `now()` | Row creation timestamp |
 | `updated_at` | `timestamptz` | nullable | `now()` | Row last-update timestamp |
@@ -652,7 +652,8 @@ State Change (any mutation)
        │
        ├─ IF syncEnabled && userId:
        │   ├─ syncAllTransactions()
-       │   └─ upsertAllPockets()
+       │   ├─ upsertAllPockets()
+       │   └─ profiles.upsert({ month_start, monthly_fund })
        │
        ├─ isSyncing = true       ← shows "SYNCING..." in status bar
        │
@@ -672,21 +673,29 @@ loadFromStorage() [async]
   ├─ IF authenticated:
   │   ├─ TRY: fetchPockets() + fetchTransactions()
   │   │
-  │   ├─ IF remote data exists:
-  │   │   └─ Load remote data into store refs
+  │   ├─ IF remote pockets exist:
+  │   │   ├─ Load remote pockets into store
+  │   │   └─ Clear localStorage (now synced)
   │   │
-  │   └─ IF no remote data but localStorage has data:
-  │       ├─ Upload local data to Supabase
-  │       └─ Clear local localStorage keys (now synced)
+  │   ├─ IF no remote pockets but localStorage has pockets:
+  │   │   ├─ Upload local pockets to Supabase
+  │   │   └─ Clear localStorage (now synced)
+  │   │
+  │   ├─ IF truly no data anywhere:
+  │   │   └─ Use DEFAULT_POCKETS and upload to Supabase
+  │   │
+  │   └─ Fetch profile (month_start, monthly_fund)
   │
   ├─ IF not authenticated OR fetch fails:
-  │   └─ Fall back to localStorage
+  │   └─ Fall back to localStorage (preserved as backup)
   │
   ├─ Validate loaded data with type guards
   │
   ├─ isLoaded = true
   └─ updateRollovers()
 ```
+
+**Key Safety:** `DEFAULT_POCKETS` is only used when no data exists in remote OR localStorage. This prevents accidental overwrites of custom allocations.
 
 ### Environment Variables
 
@@ -1276,8 +1285,8 @@ resetMonth():
 
     5. Reset store state:
        transactions.value = []
-       pockets.value = DEFAULT_POCKETS (with original allocations)
        monthStart.value = Date.now()
+       // NOTE: pockets.value is NOT reset — custom allocations are preserved
 
     6. updateRollovers()
 ```
@@ -1365,13 +1374,18 @@ main.ts
                │
                ├─ IF syncEnabled:
                │   ├─ TRY: fetchPockets() + fetchTransactions()
-               │   ├─ IF remote data → load into store
-               │   └─ IF no remote data + local data exists:
-               │       ├─ Upload local → Supabase
-               │       └─ Clear localStorage keys
+               │   ├─ IF remote pockets → load into store, clear localStorage
+               │   ├─ IF no remote pockets + localStorage has pockets:
+               │   │   ├─ Upload local → Supabase
+               │   │   └─ Clear localStorage keys
+               │   └─ IF truly no data anywhere:
+               │       ├─ Use DEFAULT_POCKETS
+               │       └─ Upload defaults to Supabase
+               │
+               ├─ Fetch profile (month_start, monthly_fund)
                │
                ├─ IF not authenticated OR fetch fails:
-               │   └─ Load from localStorage (validated)
+               │   └─ Load from localStorage (validated, preserved as fallback)
                │
                ├─ isLoaded = true
                └─ updateRollovers()
@@ -1505,8 +1519,8 @@ store.resetMonth()
   │
   ├─ Reset state:
   │   ├─ transactions.value = []
-  │   ├─ pockets.value = DEFAULT_POCKETS
-  │   └─ monthStart.value = Date.now()
+  │   ├─ monthStart.value = Date.now()
+  │   └─ pockets.value UNCHANGED (custom allocations preserved)
   │
   └─ updateRollovers()
 
@@ -2027,6 +2041,7 @@ The following issues were identified and fixed in earlier versions:
 | 17 | Console logs not stripped in production builds | ✅ Fixed |
 | 18 | Vulnerable `nanoid` / `postcss` dependencies | ✅ Fixed |
 | 19 | `handle_new_user()` search_path hijacking — `SET search_path = ''` documented | ✅ Fixed |
+| 20 | Pocket allocations reset to defaults across devices — `resetState()` no longer deletes localStorage before remote load; `monthly_fund` now synced to DB | ✅ Fixed |
 
 ### Current Considerations
 
@@ -2096,5 +2111,5 @@ Custom breakpoints are defined in `AGENT.md` as guidelines but not fully wired i
 
 ---
 
-**Documentation last updated: August 2026**
+**Documentation last updated: September 2026**
 **KosKas Version: 3.2-TACTICAL**
