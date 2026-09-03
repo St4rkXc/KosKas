@@ -173,9 +173,21 @@ export const useStore = defineStore("main", () => {
 
     /**
      * Load state from Supabase (if authenticated) or fall back to localStorage.
-     * On first sync, uploads local data to Supabase and clears localStorage.
+     * 
+     * Uses a 3-tier fallback strategy to prevent data loss:
+     * 1. Remote pockets (if exist) → load and clear localStorage
+     * 2. LocalStorage pockets (if remote empty) → upload to Supabase, then clear localStorage
+     * 3. DEFAULT_POCKETS (only if truly no data anywhere) → upload defaults to Supabase
+     * 
+     * This prevents accidental overwrites of custom allocations when Supabase returns
+     * empty due to network issues or RLS problems.
+     * 
+     * Also fetches `month_start` and `monthly_fund` from the profiles table.
      * Sets `isLoaded = true` when complete, then checks month transition and updates rollovers.
+     * 
      * @throws Logs errors internally; falls back to localStorage on Supabase failure.
+     * @see clearLocalStorage
+     * @see resetState
      */
     async function loadFromStorage() {
         const { data: { session } } = await supabase.auth.getSession();
@@ -286,8 +298,15 @@ export const useStore = defineStore("main", () => {
     let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
     /**
-     * Debounced Supabase sync (300ms). Upserts pockets, transactions, and profile month_start.
-     * No-op if sync is disabled or no user is authenticated. Sets `isSyncing` and `syncFailed`.
+     * Debounced Supabase sync (300ms). Upserts pockets, transactions, and profile data.
+     * 
+     * Syncs the following to Supabase:
+     * - All pockets (via `upsertAllPockets`)
+     * - All transactions (via `syncAllTransactions`)
+     * - Profile `month_start` and `monthly_fund` (computed from `totalAllocation`)
+     * 
+     * No-op if sync is disabled or no user is authenticated.
+     * Sets `isSyncing` and `syncFailed` flags for UI status indicators.
      */
     function syncToSupabase() {
         if (!syncEnabled.value || !userId.value) return;
@@ -656,6 +675,10 @@ export const useStore = defineStore("main", () => {
      * Archive current month's data to localStorage (keeps last 6 months),
      * clear all transactions, reset monthStart to now, and delete remote transactions
      * with retry (3 attempts with exponential backoff).
+     * 
+     * IMPORTANT: Pocket allocations are NOT reset to defaults. Custom allocations
+     * are preserved across month boundaries to maintain user preferences.
+     * Only transactions are cleared; the pocket structure remains unchanged.
      */
     async function resetMonth() {
         if (transactions.value.length > 0) {
@@ -693,7 +716,12 @@ export const useStore = defineStore("main", () => {
         updateRollovers();
     }
 
-    /** Reset all state to defaults and clear localStorage. Used on user sign-out/sign-in. */
+    /**
+     * Reset all reactive state to defaults. Does NOT clear localStorage.
+     * Used on user sign-out/sign-in to prepare for fresh data load.
+     * Call `clearLocalStorage()` separately after confirming remote data is loaded.
+     * @see clearLocalStorage
+     */
     function resetState() {
         pockets.value = [];
         transactions.value = [];
@@ -707,6 +735,11 @@ export const useStore = defineStore("main", () => {
         suppressWatch.value = false;
     }
 
+    /**
+     * Clear all KosKas localStorage keys (transactions, pockets, month_start).
+     * Called only after confirming remote data has been successfully loaded from Supabase.
+     * Prevents stale local data from interfering with synced state.
+     */
     function clearLocalStorage() {
         localStorage.removeItem(TRANSACTION_STORAGE_KEY);
         localStorage.removeItem(POCKET_STORAGE_KEY);
