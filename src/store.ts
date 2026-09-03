@@ -147,9 +147,30 @@ export const useStore = defineStore("main", () => {
 
                 if (remotePockets.length > 0) {
                     pockets.value = remotePockets;
+                    clearLocalStorage();
                 } else {
-                    pockets.value = structuredClone(DEFAULT_POCKETS);
-                    await upsertAllPockets(session.user.id, pockets.value);
+                    const localPockets = localStorage.getItem(POCKET_STORAGE_KEY);
+                    if (localPockets) {
+                        try {
+                            const parsed = JSON.parse(localPockets);
+                            if (Array.isArray(parsed) && parsed.every(isValidPocket)) {
+                                pockets.value = parsed;
+                                await upsertAllPockets(session.user.id, pockets.value);
+                                clearLocalStorage();
+                            } else {
+                                pockets.value = structuredClone(DEFAULT_POCKETS);
+                                await upsertAllPockets(session.user.id, pockets.value);
+                                clearLocalStorage();
+                            }
+                        } catch {
+                            pockets.value = structuredClone(DEFAULT_POCKETS);
+                            await upsertAllPockets(session.user.id, pockets.value);
+                            clearLocalStorage();
+                        }
+                    } else {
+                        pockets.value = structuredClone(DEFAULT_POCKETS);
+                        await upsertAllPockets(session.user.id, pockets.value);
+                    }
                 }
 
                 if (remoteTransactions.length > 0) {
@@ -169,14 +190,11 @@ export const useStore = defineStore("main", () => {
                     } else {
                         transactions.value = [];
                     }
-                    localStorage.removeItem(TRANSACTION_STORAGE_KEY);
-                    localStorage.removeItem(POCKET_STORAGE_KEY);
-                    localStorage.removeItem(MONTH_START_KEY);
                 }
 
                 const { data: profile } = await supabase
                     .from('profiles')
-                    .select('month_start')
+                    .select('month_start, monthly_fund')
                     .eq('id', session.user.id)
                     .single();
 
@@ -224,12 +242,18 @@ export const useStore = defineStore("main", () => {
             if (!userId.value) return;
             isSyncing.value = true;
             try {
+                const monthlyFund = totalAllocation.value;
                 await Promise.all([
                     upsertAllPockets(userId.value, pockets.value),
                     syncAllTransactions(userId.value, transactions.value),
                     supabase
                         .from('profiles')
-                        .upsert({ id: userId.value, month_start: monthStart.value, updated_at: new Date().toISOString() }),
+                        .upsert({ 
+                            id: userId.value, 
+                            month_start: monthStart.value,
+                            monthly_fund: monthlyFund,
+                            updated_at: new Date().toISOString() 
+                        }),
                 ]);
                 syncFailed.value = false;
             } catch (err) {
@@ -559,6 +583,9 @@ export const useStore = defineStore("main", () => {
         syncFailed.value = false;
         isSyncing.value = false;
         suppressWatch.value = false;
+    }
+
+    function clearLocalStorage() {
         localStorage.removeItem(TRANSACTION_STORAGE_KEY);
         localStorage.removeItem(POCKET_STORAGE_KEY);
         localStorage.removeItem(MONTH_START_KEY);
