@@ -59,7 +59,6 @@ function createTestStore(overrides: {
         transactions: overrides.transactions ?? [],
         monthStart: Date.now(),
         isLoaded: overrides.isLoaded ?? true,
-        storageFailed: false,
         syncFailed: false,
         isSyncing: false,
         syncEnabled: false,

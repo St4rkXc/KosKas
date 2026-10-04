@@ -1,16 +1,17 @@
 /**
  * @module store
  * @description Pinia composition store — the single source of truth for all KosKas state.
- * Manages pockets, transactions, monthly budget allocations, and dual persistence
- * (localStorage + Supabase cloud sync). Implements the pocket-based budgeting domain logic
- * including expense tracking, inter-pocket transfers, automatic daily Pangan rollover,
- * monthly reset with archival, and debounced Supabase synchronization.
+ * Manages pockets, transactions, monthly budget allocations, and Supabase cloud sync.
+ * Implements the pocket-based budgeting domain logic including expense tracking,
+ * inter-pocket transfers, automatic daily Pangan rollover, monthly reset,
+ * and debounced Supabase synchronization.
  *
+ * All data is persisted to Supabase only. No localStorage is used for authenticated users.
  * The store uses the Pinia composition API pattern (`defineStore("main", () => { ... })`).
  */
 import { defineStore } from "pinia";
 import { ref, computed, watch } from "vue";
-import { Pocket, Transaction, DEFAULT_POCKETS, POCKET_IDS, generateId, isValidPocket, isValidTransaction } from "./types";
+import { Pocket, Transaction, DEFAULT_POCKETS, POCKET_IDS, generateId } from "./types";
 import { supabase } from "./lib/supabase";
 import {
     fetchPockets,
@@ -21,20 +22,6 @@ import {
     deleteAllTransactionsRemote,
 } from "./services/sync";
 import { onUserChange } from "./composables/useAuth";
-
-/** localStorage key for the serialized transactions array. */
-const TRANSACTION_STORAGE_KEY = "koskas_transactions";
-/** localStorage key for the serialized pockets array. */
-const POCKET_STORAGE_KEY = "koskas_pockets";
-/** localStorage key for the monthly period start timestamp. */
-const MONTH_START_KEY = "koskas_month_start";
-/** localStorage key for archived monthly data (up to 6 months). */
-const ARCHIVE_STORAGE_KEY = "koskas_archives";
-
-/** @deprecated Legacy key from pre-pocket data model. Migrated on first load. */
-const LEGACY_EXPENSE_KEY = "koskas_expenses";
-/** @deprecated Legacy key from pre-pocket data model. Migrated on first load. */
-const LEGACY_BUDGETS_KEY = "koskas_budgets";
 
 /**
  * Main Pinia store for KosKas.
@@ -47,15 +34,13 @@ export const useStore = defineStore("main", () => {
     const transactions = ref<Transaction[]>([]);
     /** Unix timestamp (ms) marking the start of the current budget month. */
     const monthStart = ref<number>(Date.now());
-    /** True once initial data has been loaded from storage/sync. Prevents premature persistence. */
+    /** True once initial data has been loaded from Supabase. Prevents premature persistence. */
     const isLoaded = ref(false);
-    /** True when a localStorage write has failed (shows red banner). */
-    const storageFailed = ref(false);
     /** True when the user is authenticated and Supabase sync is active. */
     const syncEnabled = ref(false);
     /** Current authenticated user's Supabase UUID, or null. */
     const userId = ref<string | null>(null);
-    /** True when the last Supabase sync attempt failed (shows amber banner). */
+    /** True when the last Supabase sync attempt failed (shows error banner). */
     const syncFailed = ref(false);
     /** True while a Supabase sync operation is in progress. */
     const isSyncing = ref(false);
@@ -63,214 +48,63 @@ export const useStore = defineStore("main", () => {
     const suppressWatch = ref(false);
 
     /**
-     * Serialize current state to localStorage. Sets `storageFailed` on error.
-     * Called on every state mutation via the deep watcher, and directly by `updateRollovers()`.
-     */
-    function persistToStorage() {
-        try {
-            localStorage.setItem(TRANSACTION_STORAGE_KEY, JSON.stringify(transactions.value));
-            localStorage.setItem(POCKET_STORAGE_KEY, JSON.stringify(pockets.value));
-            localStorage.setItem(MONTH_START_KEY, monthStart.value.toString());
-            storageFailed.value = false;
-        } catch (e) {
-            console.warn("Failed to persist state to localStorage:", e);
-            storageFailed.value = true;
-        }
-    }
-
-    /**
-     * Load state from localStorage with validation and legacy migration.
-     * Validates parsed data with type guards; falls back to defaults on corruption.
-     * Migrates legacy `koskas_expenses`/`koskas_budgets` keys if current keys are absent.
-     */
-    function loadFromLocalStorage() {
-        const storedTransactions = localStorage.getItem(TRANSACTION_STORAGE_KEY);
-        const storedPockets = localStorage.getItem(POCKET_STORAGE_KEY);
-        const storedMonthStart = localStorage.getItem(MONTH_START_KEY);
-
-        if (storedPockets) {
-            try {
-                const parsed = JSON.parse(storedPockets);
-                if (Array.isArray(parsed) && parsed.every(isValidPocket)) {
-                    pockets.value = parsed;
-                } else {
-                    console.warn("Corrupt pockets data, using defaults");
-                    pockets.value = structuredClone(DEFAULT_POCKETS);
-                }
-            } catch (e) {
-                console.error("Failed to parse pockets", e);
-                pockets.value = structuredClone(DEFAULT_POCKETS);
-            }
-        } else {
-            const legacyBudgets = localStorage.getItem(LEGACY_BUDGETS_KEY);
-            if (legacyBudgets) {
-                try {
-                    const parsedLegacy = JSON.parse(legacyBudgets);
-                    if (parsedLegacy && typeof parsedLegacy === "object" && !Array.isArray(parsedLegacy)) {
-                        pockets.value = structuredClone(DEFAULT_POCKETS).map((p: Pocket) => {
-                            const val = parsedLegacy[p.id];
-                            if (typeof val === "number" && Number.isFinite(val)) {
-                                p.allocation = val;
-                            }
-                            return p;
-                        });
-                    } else {
-                        pockets.value = structuredClone(DEFAULT_POCKETS);
-                    }
-                } catch (e) {
-                    pockets.value = structuredClone(DEFAULT_POCKETS);
-                }
-            } else {
-                pockets.value = structuredClone(DEFAULT_POCKETS);
-            }
-        }
-
-        if (storedTransactions) {
-            try {
-                const parsed = JSON.parse(storedTransactions);
-                if (Array.isArray(parsed) && parsed.every(isValidTransaction)) {
-                    transactions.value = parsed;
-                } else {
-                    console.warn("Corrupt transactions data, using empty array");
-                    transactions.value = [];
-                }
-            } catch (e) {
-                console.error("Failed to parse transactions", e);
-                transactions.value = [];
-            }
-        } else {
-            const legacyExpenses = localStorage.getItem(LEGACY_EXPENSE_KEY);
-            if (legacyExpenses) {
-                try {
-                    const parsedExpenses = JSON.parse(legacyExpenses);
-                    transactions.value = parsedExpenses.map((exp: unknown) => {
-                        const e = exp as Record<string, unknown>;
-                        return {
-                            id: typeof e.id === "string" ? e.id : generateId(),
-                            type: "expense" as const,
-                            fromPocketId: typeof e.categoryId === "string" ? e.categoryId : undefined,
-                            amount: typeof e.amount === "number" && Number.isFinite(e.amount) ? e.amount : 0,
-                            timestamp: typeof e.timestamp === "number" ? e.timestamp : Date.now(),
-                            note: typeof e.note === "string" ? e.note : "",
-                        };
-                    }).filter(isValidTransaction);
-                } catch (e) {
-                    console.error("Failed to migrate legacy expenses");
-                }
-            }
-        }
-
-        if (storedMonthStart) {
-            const parsed = parseInt(storedMonthStart, 10);
-            monthStart.value = Number.isFinite(parsed) ? parsed : Date.now();
-        } else if (transactions.value.length > 0) {
-            const oldestTimestamp = Math.min(...transactions.value.map((t) => t.timestamp));
-            monthStart.value = Number.isFinite(oldestTimestamp) ? oldestTimestamp : Date.now();
-        } else {
-            monthStart.value = Date.now();
-        }
-    }
-
-    /**
-     * Load state from Supabase (if authenticated) or fall back to localStorage.
+     * Load state from Supabase. Supabase is the single source of truth.
      * 
-     * Uses a 3-tier fallback strategy to prevent data loss:
-     * 1. Remote pockets (if exist) → load and clear localStorage
-     * 2. LocalStorage pockets (if remote empty) → upload to Supabase, then clear localStorage
-     * 3. DEFAULT_POCKETS (only if truly no data anywhere) → upload defaults to Supabase
+     * If Supabase fetch fails, sets syncFailed = true and does NOT load any data.
+     * The UI will show an error screen with a retry button.
      * 
-     * This prevents accidental overwrites of custom allocations when Supabase returns
-     * empty due to network issues or RLS problems.
+     * For new users (no pockets in Supabase), initializes with DEFAULT_POCKETS
+     * and uploads them to Supabase.
      * 
-     * Also fetches `month_start` and `monthly_fund` from the profiles table.
+     * Also fetches `month_start` from the profiles table.
      * Sets `isLoaded = true` when complete, then checks month transition and updates rollovers.
-     * 
-     * @throws Logs errors internally; falls back to localStorage on Supabase failure.
-     * @see clearLocalStorage
-     * @see resetState
      */
     async function loadFromStorage() {
         const { data: { session } } = await supabase.auth.getSession();
 
-        if (session?.user) {
-            userId.value = session.user.id;
-            syncEnabled.value = true;
+        if (!session?.user) {
+            console.error('No authenticated session found');
+            syncFailed.value = true;
+            isLoaded.value = true;
+            return;
+        }
 
-            try {
-                const [remotePockets, remoteTransactions] = await Promise.all([
-                    fetchPockets(session.user.id),
-                    fetchTransactions(session.user.id),
-                ]);
+        userId.value = session.user.id;
+        syncEnabled.value = true;
 
-                if (remotePockets.length > 0) {
-                    pockets.value = remotePockets;
-                    clearLocalStorage();
-                } else {
-                    const localPockets = localStorage.getItem(POCKET_STORAGE_KEY);
-                    if (localPockets) {
-                        try {
-                            const parsed = JSON.parse(localPockets);
-                            if (Array.isArray(parsed) && parsed.every(isValidPocket)) {
-                                pockets.value = parsed;
-                                await upsertAllPockets(session.user.id, pockets.value);
-                                clearLocalStorage();
-                            } else {
-                                pockets.value = structuredClone(DEFAULT_POCKETS);
-                                await upsertAllPockets(session.user.id, pockets.value);
-                                clearLocalStorage();
-                            }
-                        } catch {
-                            pockets.value = structuredClone(DEFAULT_POCKETS);
-                            await upsertAllPockets(session.user.id, pockets.value);
-                            clearLocalStorage();
-                        }
-                    } else {
-                        pockets.value = structuredClone(DEFAULT_POCKETS);
-                        await upsertAllPockets(session.user.id, pockets.value);
-                    }
-                }
+        try {
+            const [remotePockets, remoteTransactions] = await Promise.all([
+                fetchPockets(session.user.id),
+                fetchTransactions(session.user.id),
+            ]);
 
-                if (remoteTransactions.length > 0) {
-                    transactions.value = remoteTransactions;
-                } else {
-                    const localTxs = localStorage.getItem(TRANSACTION_STORAGE_KEY);
-                    if (localTxs) {
-                        try {
-                            const parsed = JSON.parse(localTxs);
-                            if (Array.isArray(parsed) && parsed.every(isValidTransaction)) {
-                                transactions.value = parsed;
-                                await syncAllTransactions(session.user.id, transactions.value);
-                            }
-                        } catch {
-                            transactions.value = [];
-                        }
-                    } else {
-                        transactions.value = [];
-                    }
-                }
-
-                const { data: profile } = await supabase
-                    .from('profiles')
-                    .select('month_start, monthly_fund')
-                    .eq('id', session.user.id)
-                    .single();
-
-                if (profile?.month_start && Number.isFinite(profile.month_start)) {
-                    monthStart.value = profile.month_start;
-                } else if (transactions.value.length > 0) {
-                    const oldestTimestamp = Math.min(...transactions.value.map((t) => t.timestamp));
-                    monthStart.value = Number.isFinite(oldestTimestamp) ? oldestTimestamp : Date.now();
-                } else {
-                    monthStart.value = Date.now();
-                }
-                syncFailed.value = false;
-            } catch (err) {
-                console.error('Supabase fetch failed, falling back to localStorage:', err);
-                syncFailed.value = true;
-                loadFromLocalStorage();
+            if (remotePockets.length > 0) {
+                pockets.value = remotePockets;
+            } else {
+                pockets.value = structuredClone(DEFAULT_POCKETS);
+                await upsertAllPockets(session.user.id, pockets.value);
             }
-        } else {
-            loadFromLocalStorage();
+
+            transactions.value = remoteTransactions;
+
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('month_start')
+                .eq('id', session.user.id)
+                .single();
+
+            if (profile?.month_start && Number.isFinite(profile.month_start)) {
+                monthStart.value = profile.month_start;
+            } else if (transactions.value.length > 0) {
+                const oldestTimestamp = Math.min(...transactions.value.map((t) => t.timestamp));
+                monthStart.value = Number.isFinite(oldestTimestamp) ? oldestTimestamp : Date.now();
+            } else {
+                monthStart.value = Date.now();
+            }
+            syncFailed.value = false;
+        } catch (err) {
+            console.error('Supabase fetch failed:', err);
+            syncFailed.value = true;
         }
 
         isLoaded.value = true;
@@ -280,7 +114,7 @@ export const useStore = defineStore("main", () => {
 
     /**
      * Check if the stored month is older than the current calendar month.
-     * If so, automatically triggers `resetMonth()` to archive and clear data.
+     * If so, automatically triggers `resetMonth()` to clear data.
      */
     async function checkMonthTransition() {
         const now = new Date();
@@ -303,7 +137,7 @@ export const useStore = defineStore("main", () => {
      * Syncs the following to Supabase:
      * - All pockets (via `upsertAllPockets`)
      * - All transactions (via `syncAllTransactions`)
-     * - Profile `month_start` and `monthly_fund` (computed from `totalAllocation`)
+     * - Profile `month_start` (via direct upsert)
      * 
      * No-op if sync is disabled or no user is authenticated.
      * Sets `isSyncing` and `syncFailed` flags for UI status indicators.
@@ -315,7 +149,6 @@ export const useStore = defineStore("main", () => {
             if (!userId.value) return;
             isSyncing.value = true;
             try {
-                const monthlyFund = totalAllocation.value;
                 await Promise.all([
                     upsertAllPockets(userId.value, pockets.value),
                     syncAllTransactions(userId.value, transactions.value),
@@ -324,7 +157,6 @@ export const useStore = defineStore("main", () => {
                         .upsert({ 
                             id: userId.value, 
                             month_start: monthStart.value,
-                            monthly_fund: monthlyFund,
                             updated_at: new Date().toISOString() 
                         }),
                 ]);
@@ -363,7 +195,6 @@ export const useStore = defineStore("main", () => {
         [transactions, pockets, monthStart, isLoaded],
         () => {
             if (!isLoaded.value || suppressWatch.value) return;
-            persistToStorage();
             syncToSupabase();
         },
         { deep: true },
@@ -504,7 +335,6 @@ export const useStore = defineStore("main", () => {
         } finally {
             suppressWatch.value = false;
         }
-        persistToStorage();
     }
 
     /**
@@ -672,8 +502,7 @@ export const useStore = defineStore("main", () => {
     }
 
     /**
-     * Archive current month's data to localStorage (keeps last 6 months),
-     * clear all transactions, reset monthStart to now, and delete remote transactions
+     * Clear all transactions, reset monthStart to now, and delete remote transactions
      * with retry (3 attempts with exponential backoff).
      * 
      * IMPORTANT: Pocket allocations are NOT reset to defaults. Custom allocations
@@ -681,22 +510,6 @@ export const useStore = defineStore("main", () => {
      * Only transactions are cleared; the pocket structure remains unchanged.
      */
     async function resetMonth() {
-        if (transactions.value.length > 0) {
-            const archive = {
-                timestamp: Date.now(),
-                transactions: JSON.parse(JSON.stringify(transactions.value)),
-                pockets: JSON.parse(JSON.stringify(pockets.value)),
-                monthStart: monthStart.value,
-            };
-            try {
-                const archives = JSON.parse(localStorage.getItem(ARCHIVE_STORAGE_KEY) || "[]");
-                archives.push(archive);
-                if (archives.length > 6) archives.splice(0, archives.length - 6);
-                localStorage.setItem(ARCHIVE_STORAGE_KEY, JSON.stringify(archives));
-            } catch (e) {
-                console.warn("Failed to archive month data:", e);
-            }
-        }
         transactions.value = [];
         monthStart.value = Date.now();
         if (syncEnabled.value && userId.value) {
@@ -717,33 +530,19 @@ export const useStore = defineStore("main", () => {
     }
 
     /**
-     * Reset all reactive state to defaults. Does NOT clear localStorage.
+     * Reset all reactive state to defaults.
      * Used on user sign-out/sign-in to prepare for fresh data load.
-     * Call `clearLocalStorage()` separately after confirming remote data is loaded.
-     * @see clearLocalStorage
      */
     function resetState() {
         pockets.value = [];
         transactions.value = [];
         monthStart.value = Date.now();
         isLoaded.value = false;
-        storageFailed.value = false;
         syncEnabled.value = false;
         userId.value = null;
         syncFailed.value = false;
         isSyncing.value = false;
         suppressWatch.value = false;
-    }
-
-    /**
-     * Clear all KosKas localStorage keys (transactions, pockets, month_start).
-     * Called only after confirming remote data has been successfully loaded from Supabase.
-     * Prevents stale local data from interfering with synced state.
-     */
-    function clearLocalStorage() {
-        localStorage.removeItem(TRANSACTION_STORAGE_KEY);
-        localStorage.removeItem(POCKET_STORAGE_KEY);
-        localStorage.removeItem(MONTH_START_KEY);
     }
 
     onUserChange(async (newUserId) => {
@@ -752,8 +551,6 @@ export const useStore = defineStore("main", () => {
             await loadFromStorage();
         } else {
             resetState();
-            loadFromLocalStorage();
-            await checkMonthTransition();
             isLoaded.value = true;
         }
     });
@@ -763,7 +560,6 @@ export const useStore = defineStore("main", () => {
         transactions,
         monthStart,
         isLoaded,
-        storageFailed,
         syncFailed,
         isSyncing,
         syncEnabled,
