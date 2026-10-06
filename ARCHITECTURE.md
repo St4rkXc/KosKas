@@ -18,7 +18,7 @@ This document explains the internal architecture of KosKas for developers who wa
 10. [Performance Dashboard](#performance-dashboard)
 11. [Testing Infrastructure](#testing-infrastructure)
 12. [Design System](#design-system)
-13. [LocalStorage Schema](#localstorage-schema)
+13. [Data Persistence (Supabase-Only)](#data-persistence-supabase-only)
 14. [Build Configuration](#build-configuration)
 15. [Known Issues & Considerations](#known-issues--considerations)
 16. [Future Improvement Suggestions](#future-improvement-suggestions)
@@ -27,7 +27,7 @@ This document explains the internal architecture of KosKas for developers who wa
 
 ## System Overview
 
-KosKas is a single-page application (SPA) that uses Supabase for cloud synchronization with localStorage as a fallback. It adopts a **pocket-based budgeting** approach, where users allocate monthly income into named categories called "pockets," then record expenses or transfers between pockets. The app requires authentication (email/password or Google OAuth) to enable cloud sync; unauthenticated users can still use the app with localStorage-only persistence.
+KosKas is a single-page application (SPA) that uses Supabase as its sole persistence layer. It adopts a **pocket-based budgeting** approach, where users allocate monthly income into named categories called "pockets," then record expenses or transfers between pockets. The app requires authentication (email/password or Google OAuth) — all data is stored in Supabase; there is no localStorage fallback.
 
 ### Design Decisions
 
@@ -35,7 +35,7 @@ KosKas is a single-page application (SPA) that uses Supabase for cloud synchroni
 |----------|-----------|
 | **Vue 3 + Composition API** | Declarative reactivity, type-safe with `<script setup>` |
 | **Pinia (composition pattern)** | Modern state management with superior TypeScript support |
-| **Supabase + localStorage** | Cloud sync with offline fallback; data survives page reload and device switches |
+| **Supabase-only persistence** | All data stored in Supabase; no localStorage; data survives page reload and device switches |
 | **Supabase Auth** | Email/password + Google OAuth; session managed before app mount |
 | **Tailwind CSS v4** | Utility-first, custom theme via `@theme` directive, fast iteration |
 | **No router** | Single-view app with tab-based view switching; no multi-page navigation needed |
@@ -45,7 +45,7 @@ KosKas is a single-page application (SPA) that uses Supabase for cloud synchroni
 | **Auto rollover** | Reduces manual work; leftover food budget is auto-tracked |
 | **Vitest + happy-dom** | Fast unit testing with DOM simulation; `@pinia/testing` for store isolation |
 | **Binary search insertion** | O(log n) find + O(n) splice for sorted transaction insertion |
-| **Data validation on load** | Runtime type guards prevent corrupted localStorage from crashing the app |
+| **Data validation on load** | Runtime type guards prevent corrupted data from crashing the app |
 | **Batch upsert (100 rows)** | Efficient Supabase writes; avoids hitting row limits on large datasets |
 | **Content Security Policy** | CSP meta tag in `index.html` restricts script/style/font/connect sources |
 | **Console stripping** | `esbuild.drop: ['console', 'debugger']` removes logs from production builds |
@@ -102,15 +102,13 @@ KosKas is a single-page application (SPA) that uses Supabase for cloud synchroni
 │  └────────────────────────┬──────────────────────────────────────────┘ │
 └───────────────────────────┼────────────────────────────────────────────┘
                             │ deep watch (debounced 300ms)
-              ┌─────────────┴──────────────┐
-              │                            │
-┌─────────────▼──────────────┐  ┌──────────▼────────────────────────────┐
-│       localStorage          │  │          Supabase (via sync.ts)        │
-│  koskas_transactions        │  │  pockets table  │ transactions table   │
-│  koskas_pockets             │  │  profiles table │ batch upsert (100/b) │
-│  koskas_month_start         │  │  (user-scoped)  │ snake_case mapping   │
-│  koskas_archives            │  └────────────────────────────────────────┘
-└─────────────────────────────┘
+                            │
+┌───────────────────────────▼────────────────────────────────────────────┐
+│                    Supabase (via sync.ts)                               │
+│  pockets table  │ transactions table  │ profiles table                  │
+│  (user-scoped)  │ batch upsert (100/b)│ (user-scoped)                   │
+│                 │ snake_case mapping   │                                │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -164,7 +162,7 @@ koskas/
 | File | Responsibility |
 |------|----------------|
 | `main.ts` | App bootstrap; `initAuth()` before mount; error/warn handlers; Vue + Pinia init |
-| `store.ts` | Single source of truth; state, computed, actions; localStorage + Supabase sync |
+| `store.ts` | Single source of truth; state, computed, actions; Supabase sync |
 | `types.ts` | Interfaces (`Pocket`, `Transaction`), constants (`POCKET_IDS`, `DEFAULT_POCKETS`), type guards, utilities |
 | `iconMap.ts` | Maps Lucide icon names to Vue components; `resolveIcon()` fallback utility |
 | `index.css` | Global styles; Tailwind v4 `@theme` directive for custom colors and fonts |
@@ -172,7 +170,7 @@ koskas/
 | `lib/supabase.ts` | Supabase client singleton; reads `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` |
 | `services/sync.ts` | Remote CRUD operations; batch upsert (100 rows/batch); camelCase ↔ snake_case mapping |
 | `composables/useAuth.ts` | Auth state management; singleton refs; `onAuthStateChange` subscription |
-| `test-setup.ts` | Vitest global setup; mocks Supabase, sync service, structuredClone, localStorage |
+| `test-setup.ts` | Vitest global setup; mocks Supabase, sync service, structuredClone |
 | `KeypadModal.vue` | Expense input; numeric keypad with pocket selector |
 | `PocketSettingsModal.vue` | Pocket configuration; CRUD custom pockets, set allocations |
 | `TransferModal.vue` | Inter-pocket transfer; sender balance validation |
@@ -397,7 +395,7 @@ main.ts
 
 ### Overview
 
-KosKas uses Supabase as its cloud sync backend. The sync layer is **additive** — localStorage remains the primary persistence, and Supabase syncs on top of it. The app works fully offline; sync is a convenience feature for authenticated users.
+KosKas uses Supabase as its sole persistence backend. All data (pockets, transactions, profile) is stored in Supabase. There is no localStorage fallback — the app requires authentication and an active Supabase connection to function.
 
 ### Supabase Client (`lib/supabase.ts`)
 
@@ -646,24 +644,22 @@ State Change (any mutation)
   │
   ├─ Deep watcher triggered
   │
-  ├─ persistToStorage()          ← immediate localStorage write
-  │
   └─ debounced sync (300ms)      ← Supabase sync
        │
-       ├─ IF syncEnabled && userId:
+       ├─ IF userId:
        │   ├─ syncAllTransactions()
        │   ├─ upsertAllPockets()
-       │   └─ profiles.upsert({ month_start, monthly_fund })
+       │   └─ profiles.upsert({ month_start })
        │
        ├─ isSyncing = true       ← shows "SYNCING..." in status bar
        │
        └─ On complete/error:
            ├─ isSyncing = false
            ├─ syncFailed = true/false
-           └─ Status bar updates: "SYNC: OK" / "SYNC: OFFLINE"
+           └─ Status bar updates: "SYNC: OK" / "SYNC: FAILED"
 ```
 
-### Initial Load with Sync
+### Initial Load
 
 ```
 loadFromStorage() [async]
@@ -674,20 +670,16 @@ loadFromStorage() [async]
   │   ├─ TRY: fetchPockets() + fetchTransactions()
   │   │
   │   ├─ IF remote pockets exist:
-  │   │   ├─ Load remote pockets into store
-  │   │   └─ Clear localStorage (now synced)
+  │   │   └─ Load remote pockets into store
   │   │
-  │   ├─ IF no remote pockets but localStorage has pockets:
-  │   │   ├─ Upload local pockets to Supabase
-  │   │   └─ Clear localStorage (now synced)
+  │   ├─ IF no remote pockets:
+  │   │   ├─ Use DEFAULT_POCKETS
+  │   │   └─ Upload defaults to Supabase
   │   │
-  │   ├─ IF truly no data anywhere:
-  │   │   └─ Use DEFAULT_POCKETS and upload to Supabase
-  │   │
-  │   └─ Fetch profile (month_start, monthly_fund)
+  │   └─ Fetch profile (month_start)
   │
-  ├─ IF not authenticated OR fetch fails:
-  │   └─ Fall back to localStorage (preserved as backup)
+  ├─ IF fetch fails:
+  │   └─ Show error screen with retry button
   │
   ├─ Validate loaded data with type guards
   │
@@ -695,7 +687,7 @@ loadFromStorage() [async]
   └─ updateRollovers()
 ```
 
-**Key Safety:** `DEFAULT_POCKETS` is only used when no data exists in remote OR localStorage. This prevents accidental overwrites of custom allocations.
+**Key Safety:** `DEFAULT_POCKETS` is only used when no data exists in Supabase. This prevents accidental overwrites of custom allocations.
 
 ### Environment Variables
 
@@ -722,7 +714,6 @@ The store uses the **composition API pattern** (not options pattern) via `define
 │  │  transactions: Ref<Transaction[]> // All transactions         │  │
 │  │  monthStart: Ref<number>          // Month start timestamp    │  │
 │  │  isLoaded: Ref<boolean>           // Data has loaded          │  │
-│  │  storageFailed: Ref<boolean>      // localStorage write fail  │  │
 │  │  syncEnabled: Ref<boolean>        // User is authenticated    │  │
 │  │  userId: Ref<string | null>       // Current user ID          │  │
 │  │  syncFailed: Ref<boolean>         // Supabase sync fail       │  │
@@ -748,8 +739,7 @@ The store uses the **composition API pattern** (not options pattern) via `define
 │  │  updatePocketAllocation(id, amount)      // Update 1 pocket   │  │
 │  │  updateAllAllocations(newAllocs)         // Update all        │  │
 │  │  updateRollovers()                       // Recalc rollovers  │  │
-│  │  resetMonth()                            // Archive + reset   │  │
-│  │  persistToStorage()                      // Write localStorage │  │
+│  │  resetMonth()                            // Clear + reset     │  │
 │  └───────────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -762,7 +752,6 @@ The store uses the **composition API pattern** (not options pattern) via `define
 | `transactions` | `Ref<Transaction[]>` | `[]` (loaded from storage) | All transactions, sorted desc by timestamp |
 | `monthStart` | `Ref<number>` | `Date.now()` | Start timestamp of the monthly period |
 | `isLoaded` | `Ref<boolean>` | `false` | Guard to prevent persistence before data is loaded |
-| `storageFailed` | `Ref<boolean>` | `false` | True when localStorage write fails (shows red banner) |
 | `syncEnabled` | `Ref<boolean>` | `false` | True when user is authenticated |
 | `userId` | `Ref<string \| null>` | `null` | Current user's Supabase ID |
 | `syncFailed` | `Ref<boolean>` | `false` | True when Supabase sync fails (shows amber banner) |
@@ -805,7 +794,7 @@ Complex aggregation comparing current vs previous month spending per pocket. Use
 
 ### Persistence Strategy
 
-The deep watcher now performs **dual persistence** — localStorage and Supabase sync:
+The deep watcher performs **Supabase sync only**:
 
 ```typescript
 watch(
@@ -814,7 +803,6 @@ watch(
         if (!isLoaded.value) return;      // Guard: don't persist before load
         if (suppressWatch.value) return;   // Guard: don't sync during rollover recalc
 
-        persistToStorage();                // Immediate localStorage write
         debouncedSync();                   // 300ms debounced Supabase sync
     },
     { deep: true }
@@ -825,20 +813,18 @@ watch(
 - **Deep watcher:** Detects changes on nested objects/arrays (e.g., `pockets[0].allocation = 500000`)
 - **`isLoaded` guard:** Prevents writing empty data during initialization
 - **`suppressWatch` guard:** Prevents sync during `updateRollovers()` — rollovers are local-only calculations
-- **`persistToStorage()`:** Extracted as a separate function with `storageFailed` error tracking
 - **Debounced sync:** 300ms debounce prevents excessive Supabase API calls on rapid mutations
-- **Dual write:** localStorage is synchronous and immediate; Supabase is async and debounced
 
 ### Rollover Persistence
 
-`updateRollovers()` wraps its work in `suppressWatch = true/false` to prevent the deep watcher from triggering during rollover recalculation. After rollovers are updated, it calls `persistToStorage()` directly to save the final state:
+`updateRollovers()` wraps its work in `suppressWatch = true/false` to prevent the deep watcher from triggering during rollover recalculation. After rollovers are updated, the watcher naturally syncs the final state to Supabase:
 
 ```
 updateRollovers():
     suppressWatch.value = true
     // ... recalculate rollovers, modify transactions array ...
     suppressWatch.value = false
-    persistToStorage()    // Direct save, bypassing the watcher
+    // Deep watcher triggers sync to Supabase
 ```
 
 ---
@@ -855,7 +841,7 @@ updateRollovers():
 - Computed properties for display: `daysRemaining`, `pocketStats`, `dailyPanganStats`, `currentDateStr`
 - Icon resolution: delegates to `iconMap.ts` via `resolveIcon()`
 - Pocket lookup memoization: `pocketMap` computed to avoid O(N×M) lookups
-- Status banners: storage failure (red), sync failure (amber), sync status indicator
+- Status banners: sync failure (amber), sync status indicator
 - Month navigation for performance dashboard
 
 **Template Structure:**
@@ -869,9 +855,8 @@ App.vue
 │   └── "Continue with Google" button
 ├── App Container (v-else)
 │   ├── Status Banners
-│   │   ├── Storage Failed Banner (red): "Storage unavailable..."
-│   │   └── Sync Failed Banner (amber): "Supabase sync failed..."
-│   ├── Status Bar ("V3.2-TACTICAL • date • SYNC: OK/SYNCING/OFFLINE")
+│   │   └── Sync Failed Banner (amber): "SYNC: FAILED"
+│   ├── Status Bar ("V3.2-TACTICAL • date • SYNC: OK/SYNCING/FAILED")
 │   ├── Header
 │   │   ├── Total Remaining (big number)
 │   │   ├── Status Badge (Aman / Warning / Danger)
@@ -1192,7 +1177,7 @@ updateRollovers():
        instead of sort-after-insert
 
     suppressWatch = false
-    persistToStorage()
+    // Deep watcher triggers sync to Supabase
 ```
 
 **Binary Search Insertion (`insertSorted`):**
@@ -1259,89 +1244,59 @@ deletePocket(id, transferBalanceToPocketId?):
        updateRollovers()
 ```
 
-### 4. Month Archive & Reset
+### 4. Month Reset
 
 **Location:** `store.ts` → `resetMonth()`
 
-`resetMonth()` now archives the current month's data before clearing:
+`resetMonth()` clears all transactions for the current month with retry logic:
 
 ```
 resetMonth():
-    1. Build archive entry:
-       {
-         timestamp: Date.now(),
-         transactions: [...transactions.value],
-         pockets: [...pockets.value],
-         monthStart: monthStart.value
-       }
-
-    2. Load existing archives from localStorage ("koskas_archives")
-       Keep maximum 6 archives (FIFO — oldest dropped)
-
-    3. Save archives back to localStorage
-
-    4. IF syncEnabled:
+    1. IF userId:
        deleteAllTransactionsRemote(userId)  // Clear remote transactions
+       (retries up to 3x with exponential backoff on failure)
 
-    5. Reset store state:
+    2. Reset store state:
        transactions.value = []
        monthStart.value = Date.now()
        // NOTE: pockets.value is NOT reset — custom allocations are preserved
 
-    6. updateRollovers()
+    3. updateRollovers()
 ```
 
 ### 5. Data Validation on Load
 
-**Location:** `store.ts` → `loadFromStorage()` / `loadFromLocalStorage()`
+**Location:** `store.ts` → `loadFromStorage()`
 
-All data loaded from localStorage is validated with runtime type guards:
+All data loaded from Supabase is validated with runtime type guards:
 
 ```
-loadFromLocalStorage():
-    ├─ Parse JSON from localStorage
-    ├─ IF parsed data is array:
+loadFromStorage():
+    ├─ Fetch from Supabase
+    ├─ IF data is array:
     │   ├─ Validate each pocket with isValidPocket(p)
     │   ├─ Validate each transaction with isValidTransaction(t)
     │   └─ Filter out invalid entries
     ├─ IF validation fails entirely:
     │   └─ Fall back to DEFAULT_POCKETS / empty transactions
-    └─ Legacy migration also filters through isValidTransaction
+    └─ isLoaded = true
 ```
 
-### 6. Legacy Data Migration
+### 6. App Startup Sequence
 
 **Location:** `store.ts` → `loadFromStorage()`
 
 ```
 loadFromStorage():
-    ┌─ POCKETS ─────────────────────────────────────────────────────────┐
-    │ IF localStorage has "koskas_pockets":                             │
-    │   TRY: parse JSON → validate with isValidPocket → pockets.value   │
-    │   CATCH: use DEFAULT_POCKETS                                      │
-    │ ELSE IF localStorage has "koskas_budgets" (legacy):               │
-    │   TRY: parse JSON → map DEFAULT_POCKETS with legacy allocations   │
-    │   CATCH: use DEFAULT_POCKETS                                      │
-    │ ELSE:                                                             │
-    │   use DEFAULT_POCKETS                                             │
-    └───────────────────────────────────────────────────────────────────┘
-
-    ┌─ TRANSACTIONS ───────────────────────────────────────────────────┐
-    │ IF localStorage has "koskas_transactions":                        │
-    │   TRY: parse JSON → validate with isValidTransaction → tx.value   │
-    │   CATCH: empty array                                              │
-    │ ELSE IF localStorage has "koskas_expenses" (legacy):              │
-    │   TRY: parse JSON → map to new Transaction format + validate      │
-    │   CATCH: empty array                                              │
-    │ ELSE:                                                             │
-    │   empty array                                                     │
-    └───────────────────────────────────────────────────────────────────┘
-
-    ┌─ MONTH START ─────────────────────────────────────────────────────┐
-    │ IF localStorage has "koskas_month_start":                         │
-    │   parse int → monthStart.value (or Date.now() if invalid)         │
-    │ ELSE:                                                             │
-    │   Date.now()                                                      │
+    ┌─ SUPABASE FETCH ─────────────────────────────────────────────────┐
+    │ IF authenticated:                                                 │
+    │   TRY: fetchPockets() + fetchTransactions()                       │
+    │   ├─ IF remote pockets → load into store                          │
+    │   ├─ IF no remote pockets → use DEFAULT_POCKETS, upload to Supa.. │
+    │   └─ Fetch profile (month_start)                                  │
+    │                                                                   │
+    │ IF fetch fails:                                                   │
+    │   └─ Show error screen with retry button                          │
     └───────────────────────────────────────────────────────────────────┘
 
     isLoaded = true
@@ -1370,25 +1325,20 @@ main.ts
            │
            ├─ IF loading → show loading screen
            ├─ IF no user → show login screen
-           └─ IF user → mount app, call store.loadFromStorage()
-               │
-               ├─ IF syncEnabled:
-               │   ├─ TRY: fetchPockets() + fetchTransactions()
-               │   ├─ IF remote pockets → load into store, clear localStorage
-               │   ├─ IF no remote pockets + localStorage has pockets:
-               │   │   ├─ Upload local → Supabase
-               │   │   └─ Clear localStorage keys
-               │   └─ IF truly no data anywhere:
-               │       ├─ Use DEFAULT_POCKETS
-               │       └─ Upload defaults to Supabase
-               │
-               ├─ Fetch profile (month_start, monthly_fund)
-               │
-               ├─ IF not authenticated OR fetch fails:
-               │   └─ Load from localStorage (validated, preserved as fallback)
-               │
-               ├─ isLoaded = true
-               └─ updateRollovers()
+            └─ IF user → mount app, call store.loadFromStorage()
+                │
+                ├─ TRY: fetchPockets() + fetchTransactions()
+                │   ├─ IF remote pockets → load into store
+                │   ├─ IF no remote pockets:
+                │   │   ├─ Use DEFAULT_POCKETS
+                │   │   └─ Upload defaults to Supabase
+                │   └─ Fetch profile (month_start)
+                │
+                ├─ IF fetch fails:
+                │   └─ Show error screen with retry button
+                │
+                ├─ isLoaded = true
+                └─ updateRollovers()
 ```
 
 ### User Action: Add Expense
@@ -1419,25 +1369,20 @@ store.addExpense(pocketId, amount)
   │
   ├─ transactions.value.unshift(newTransaction)  ← reactive mutation
   │
-  └─ updateRollovers()
-       │
-       ├─ suppressWatch = true
-       ├─ Recalculate daily pangan rollovers for past days
-       ├─ May add/modify/remove rollover transactions
-       ├─ insertSorted() via binary search
-       ├─ suppressWatch = false
-       └─ persistToStorage()
+   └─ updateRollovers()
+        │
+        ├─ suppressWatch = true
+        ├─ Recalculate daily pangan rollovers for past days
+        ├─ May add/modify/remove rollover transactions
+        ├─ insertSorted() via binary search
+        └─ suppressWatch = false
 
-  ┌─── Deep Watcher Triggered ───┐
-  │                               │
-  │  persistToStorage():          │
-  │  ├─ koskas_transactions       │
-  │  └─ koskas_month_start        │
-  │                               │
-  │  debouncedSync() (300ms):     │
-  │  ├─ upsertTransaction(new)    │
-  │  └─ syncAllTransactions()     │
-  └───────────────────────────────┘
+   ┌─── Deep Watcher Triggered ───┐
+   │                               │
+   │  debouncedSync() (300ms):     │
+   │  ├─ upsertTransaction(new)    │
+   │  └─ syncAllTransactions()     │
+   └───────────────────────────────┘
 
   ┌─── Computed Properties Recalculated ───┐
   │                                         │
@@ -1490,7 +1435,6 @@ handleSaveAll()
   └─ emit("close")
 
   ┌─── Deep Watcher Triggered ───┐
-  │  persistToStorage()           │
   │  debouncedSync()              │
   └───────────────────────────────┘
 
@@ -1508,14 +1452,9 @@ User clicks "Reset" button in History view
   ▼
 store.resetMonth()
   │
-  ├─ Archive current data:
-  │   ├─ Build archive entry { timestamp, transactions, pockets, monthStart }
-  │   ├─ Load existing archives from "koskas_archives"
-  │   ├─ Keep max 6 archives (drop oldest)
-  │   └─ Save to localStorage
-  │
-  ├─ IF syncEnabled:
+  ├─ IF userId:
   │   └─ deleteAllTransactionsRemote(userId)
+  │      (retries up to 3x with exponential backoff)
   │
   ├─ Reset state:
   │   ├─ transactions.value = []
@@ -1525,7 +1464,6 @@ store.resetMonth()
   └─ updateRollovers()
 
   ┌─── Deep Watcher Triggered ───┐
-  │  persistToStorage()           │
   │  debouncedSync()              │
   └───────────────────────────────┘
 ```
@@ -1748,129 +1686,48 @@ desktop-lg: 1600px  /* Large desktops */
 
 #### Status Banners
 ```html
-<!-- Storage failure (red) -->
-<div class="bg-neon-danger/10 text-neon-danger px-4 py-2 text-xs">
-  Storage unavailable — data will be lost when you close this tab
-</div>
-
 <!-- Sync failure (amber) -->
 <div class="bg-neon-warn/10 text-neon-warn px-4 py-2 text-xs">
-  Supabase sync failed — changes saved locally, retrying automatically
+  SYNC: FAILED
 </div>
 ```
 
 ---
 
-## LocalStorage Schema
+## Data Persistence (Supabase-Only)
 
-### Keys
+> **Note:** As of the Supabase-only migration, KosKas no longer uses localStorage for persistence. All data is stored in Supabase. The sections below describe the legacy localStorage schema for reference only.
 
-| Key | Type | Purpose |
-|-----|------|---------|
-| `koskas_transactions` | JSON string | Array of `Transaction` objects (validated on load) |
-| `koskas_pockets` | JSON string | Array of `Pocket` objects (validated on load) |
-| `koskas_month_start` | String (number) | Unix timestamp (ms) of month start |
-| `koskas_archives` | JSON string | Array of monthly archive objects (max 6) |
+### Supabase Tables
 
-### Data Shapes
+All data is stored in Supabase tables:
 
-#### `koskas_transactions`
+| Table | Purpose |
+|-------|---------|
+| `profiles` | User profile with `month_start` timestamp |
+| `pockets` | Pocket configuration per user |
+| `transactions` | Transaction records per user |
 
-```json
-[
-  {
-    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-    "type": "expense",
-    "fromPocketId": "pangan",
-    "amount": 25000,
-    "timestamp": 1719856800000,
-    "note": "Makan siang"
-  },
-  {
-    "id": "rollover-2024-07-01",
-    "type": "transfer",
-    "fromPocketId": "pangan",
-    "toPocketId": "leftover",
-    "amount": 15000,
-    "timestamp": 1719878399999,
-    "isRollover": true,
-    "rolloverDate": "2024-07-01",
-    "note": "Sisa pangan harian (1/7)"
-  }
-]
-```
-
-#### `koskas_pockets`
-
-```json
-[
-  {
-    "id": "pangan",
-    "name": "Pangan",
-    "allocation": 1500000,
-    "colorClass": "bg-[#10B981] text-black",
-    "icon": "Utensils",
-    "isSystem": true
-  },
-  {
-    "id": "pocket_x7k2m9",
-    "name": "Belanja",
-    "allocation": 200000,
-    "colorClass": "bg-[#F97316] text-black",
-    "icon": "ShoppingBag",
-    "isSystem": false
-  }
-]
-```
-
-#### `koskas_month_start`
-
-```
-"1719792000000"
-```
-
-String representation of Unix timestamp in milliseconds.
-
-#### `koskas_archives`
-
-```json
-[
-  {
-    "timestamp": 1719792000000,
-    "transactions": [ ... ],
-    "pockets": [ ... ],
-    "monthStart": 1719792000000
-  }
-]
-```
-
-Array of archived monthly data. Maximum 6 entries; oldest is dropped when a new archive is added during `resetMonth()`.
+See [Supabase Database Schema](#supabase-database-schema) above for full details.
 
 ### Data Validation
 
-All data loaded from localStorage is validated with runtime type guards:
+All data loaded from Supabase is validated with runtime type guards:
 
 - `isValidPocket(p: unknown): p is Pocket` — checks required fields and types
 - `isValidTransaction(t: unknown): t is Transaction` — checks required fields and types
 - Invalid entries are silently filtered out; if all entries are invalid, defaults are used
-- Legacy migration data is also validated through these guards
 
-### Legacy Migration
+### Legacy localStorage Schema (Deprecated)
 
-| Old Key | New Mapping | Notes |
-|---------|-------------|-------|
-| `koskas_expenses` | → `koskas_transactions` | Mapped: `categoryId` → `fromPocketId`, forced `type: "expense"`, validated |
-| `koskas_budgets` | → `koskas_pockets` | Mapped: `{ [pocketId]: allocation }` → `Pocket.allocation` |
+The following localStorage keys were used before the Supabase-only migration. They are no longer read or written by the application:
 
-Migration only occurs if the new key does not exist. After migration, new data is written to the new keys and old keys remain (not deleted).
-
-### Storage Limits
-
-- **localStorage quota:** ~5-10MB depending on browser
-- **Estimated data per transaction:** ~150 bytes
-- **Max transactions:** ~35,000-65,000 before quota exceeded
-- **Archives:** Up to 6 monthly archives; each archive contains full transaction + pocket snapshots
-- **Sync reduces local pressure:** Authenticated users have data in Supabase; localStorage acts as cache
+| Key | Type | Purpose (Legacy) |
+|-----|------|---------|
+| `koskas_transactions` | JSON string | Array of `Transaction` objects |
+| `koskas_pockets` | JSON string | Array of `Pocket` objects |
+| `koskas_month_start` | String (number) | Unix timestamp (ms) of month start |
+| `koskas_archives` | JSON string | Array of monthly archive objects (max 6) |
 
 ---
 
@@ -2042,6 +1899,9 @@ The following issues were identified and fixed in earlier versions:
 | 18 | Vulnerable `nanoid` / `postcss` dependencies | ✅ Fixed |
 | 19 | `handle_new_user()` search_path hijacking — `SET search_path = ''` documented | ✅ Fixed |
 | 20 | Pocket allocations reset to defaults across devices — `resetState()` no longer deletes localStorage before remote load; `monthly_fund` now synced to DB | ✅ Fixed |
+| 21 | localStorage/Superbase data disconnect — balances computed from Supabase, history from localStorage | ✅ Fixed |
+| 22 | `monthly_fund` redundant in profiles table — derived from pockets, removed from sync | ✅ Fixed |
+| 23 | No offline support — app requires authentication and Supabase connection | ✅ Fixed (by design) |
 
 ### Current Considerations
 
@@ -2052,21 +1912,14 @@ The app **throws on startup** if `VITE_SUPABASE_URL` or `VITE_SUPABASE_ANON_KEY`
 - The `.env.example` file documents required variables
 - CI/CD pipelines must inject these variables
 
-#### 2. Sync Debounce Data Loss Window
+#### 2. Supabase Connection Required
 
-The 300ms debounce on Supabase sync means:
-- If the tab is closed within 300ms of a mutation, the last change may not reach Supabase
-- localStorage is written immediately (no debounce), so local data is always safe
-- This is an acceptable trade-off for most use cases; critical data is persisted locally first
+The app requires an active Supabase connection to function:
+- If Supabase fetch fails on initial load, an error screen with retry button is shown
+- There is no offline fallback — all data is stored in Supabase
+- The 300ms debounce on sync means if the tab is closed within 300ms of a mutation, the last change may not reach Supabase
 
-#### 3. Archive Storage Growth
-
-The `koskas_archives` key stores up to 6 monthly snapshots:
-- Each archive contains full transaction + pocket arrays
-- With heavy usage, archives could consume significant localStorage space
-- No automatic cleanup beyond the 6-archive cap
-
-#### 4. Custom Breakpoints Not Fully Configured
+#### 3. Custom Breakpoints Not Fully Configured
 
 Custom breakpoints are defined in `AGENT.md` as guidelines but not fully wired into the Tailwind v4 theme. Some components use default Tailwind breakpoints (`sm:`, `md:`, etc.) instead of custom ones.
 
@@ -2077,8 +1930,8 @@ Custom breakpoints are defined in `AGENT.md` as guidelines but not fully wired i
 ### High Priority (Stability & Performance)
 
 1. **Implement undo/redo** — Track last N actions, allow user to undo mistakes
-2. **IndexedDB migration** — Move beyond localStorage 5MB limit for long-term data growth
-3. **Sync conflict resolution** — Handle cases where local and remote data diverge
+2. **Sync conflict resolution** — Handle cases where local and remote data diverge
+3. **Offline queue** — Queue mutations when offline, sync when connection restored
 
 ### Medium Priority (Features)
 
@@ -2111,5 +1964,5 @@ Custom breakpoints are defined in `AGENT.md` as guidelines but not fully wired i
 
 ---
 
-**Documentation last updated: September 2026**
+**Documentation last updated: October 2026**
 **KosKas Version: 3.2-TACTICAL**

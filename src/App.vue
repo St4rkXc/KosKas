@@ -416,7 +416,7 @@ function formatDateTime(timestamp: number) {
         </div>
 
         <div class="absolute top-4 left-0 w-full px-6 sm:px-10 flex justify-between z-20 pointer-events-none">
-            <div class="font-mono text-[10px] text-text-muted">V3.2-TACTICAL • {{ currentDateStr }}</div>
+            <div class="font-mono text-[10px] text-text-muted">V3.2 Beta Version • {{ currentDateStr }}</div>
             <div class="font-mono text-[10px] text-text-muted hidden sm:flex gap-2 items-center">
                 <span v-if="store.isSyncing" class="text-neon-safe animate-pulse">SYNC: SYNCING...</span>
                 <span v-else-if="store.syncFailed" class="text-neon-danger">SYNC: FAILED</span>
