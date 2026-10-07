@@ -12,8 +12,8 @@ A single-page web application for tracking personal expenses using a pocket-base
 - **Automatic Food Rollover** — System automatically calculates and transfers unused daily food budget to the "Food Leftover" pocket
 - **Real-Time Dashboard** — View remaining balance per pocket, visual progress bars, and over-budget status
 - **Daily Food Statistics** — Monitor daily food spending targets and remaining budget
-- **Cloud Sync** — Supabase-backed cloud synchronization with localStorage fallback for offline use
-- **Authentication** — Email/password and Google OAuth via Supabase Auth
+- **Cloud Sync** — Supabase-backed cloud synchronization; all data stored in Supabase
+- **Authentication Required** — Email/password and Google OAuth via Supabase Auth; no offline mode
 - **Performance Dashboard** — Month-over-month spending comparison with per-pocket analytics
 - **Dark Tactical UI** — Neon-minimalist design with a tactical aesthetic for a focused visual experience
 - **Responsive Design** — Optimized for mobile and desktop with custom breakpoints
@@ -221,12 +221,7 @@ KosKas uses custom breakpoints instead of standard Tailwind defaults:
 
 ### LocalStorage Keys
 
-KosKas stores data in the browser with the following keys:
-
-- `koskas_transactions` — Transaction list
-- `koskas_pockets` — Pocket configuration
-- `koskas_month_start` — Month start timestamp
-- `koskas_archives` — Archived monthly data (up to 6 months)
+KosKas no longer uses localStorage for persistence. All data is stored in Supabase.
 
 ## Tech Stack
 
@@ -289,6 +284,7 @@ Files in `dist/` can be deployed to any static hosting provider:
 6. **Duplicate `vite` in dependencies** — `vite` is listed in both `dependencies` and `devDependencies`.
 7. **`clean` script not Windows-compatible** — Uses `rm -rf` which only works on Unix/Linux/macOS.
 8. **Unused dependencies** — Some dependencies are not used in the bundle.
+9. **No offline support** — App requires authentication and active Supabase connection to function.
 
 ## Future Improvements
 
@@ -309,7 +305,7 @@ Files in `dist/` can be deployed to any static hosting provider:
 - Budget alerts — Notifications when approaching pocket limits
 - Multi-currency support — Support for currencies other than IDR
 - Dark/Light theme toggle — Option for light mode
-- PWA support — Installable app with offline support
+- Offline support — Queue mutations when offline, sync when connection restored
 
 ## License
 

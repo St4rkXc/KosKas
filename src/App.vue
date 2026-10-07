@@ -110,9 +110,7 @@ const pocketStats = computed(() => {
     const spent: Record<string, number> = {};
     for (const p of store.pockets) spent[p.id] = 0;
 
-    const monthStart = store.monthStart;
-    for (const t of store.transactions) {
-        if (t.timestamp < monthStart) continue;
+    for (const t of store.currentMonthTransactions) {
         if (t.type === "expense" && t.fromPocketId && t.fromPocketId in spent) {
             spent[t.fromPocketId] += t.amount;
         }
@@ -269,28 +267,12 @@ function getMonthEnd(date: Date): number {
 }
 
 function getTransactionsForMonth(date: Date) {
+    if (isCurrentMonth(date)) {
+        return store.currentMonthTransactions;
+    }
     const start = getMonthStart(date);
     const end = getMonthEnd(date);
-    const active = store.transactions.filter((t) => t.timestamp >= start && t.timestamp <= end);
-    if (active.length > 0 || isCurrentMonth(date)) {
-        return active;
-    }
-
-    try {
-        const archives = JSON.parse(localStorage.getItem("koskas_archives") || "[]");
-        for (const arch of archives) {
-            const archTxs = (arch.transactions || []).filter(
-                (t: any) => t.timestamp >= start && t.timestamp <= end
-            );
-            if (archTxs.length > 0) {
-                return archTxs;
-            }
-        }
-    } catch (e) {
-        console.warn("Failed to read archives:", e);
-    }
-
-    return [];
+    return store.transactions.filter((t) => t.timestamp >= start && t.timestamp <= end);
 }
 
 function getPreviousMonth(date: Date): Date {
@@ -410,22 +392,34 @@ function formatDateTime(timestamp: number) {
         </div>
     </div>
 
-    <div v-else-if="!store.isLoaded" class="min-h-screen bg-bg-primary text-text-primary"></div>
+    <div v-else-if="!store.isLoaded && store.syncFailed" class="min-h-screen bg-bg-primary text-text-primary flex items-center justify-center">
+        <div class="text-center max-w-md px-6">
+            <div class="text-6xl mb-4">⚠️</div>
+            <h2 class="text-text-primary text-xl font-bold mb-2">Failed to load data</h2>
+            <p class="text-text-muted mb-6">Could not connect to Supabase. Please check your internet connection and try again.</p>
+            <button @click="location.reload()" class="px-6 py-3 bg-neon-safe text-bg-primary font-bold rounded hover:bg-neon-safe/90 transition-colors">
+                Retry
+            </button>
+        </div>
+    </div>
+
+    <div v-else-if="!store.isLoaded" class="min-h-screen bg-bg-primary text-text-primary flex items-center justify-center">
+        <div class="text-center">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-neon-safe mx-auto"></div>
+            <p class="mt-4 text-text-muted font-mono text-sm">Loading your data...</p>
+        </div>
+    </div>
 
     <div v-else class="w-full min-h-screen bg-bg-primary text-text-primary flex flex-col font-sans p-6 sm:p-10 select-none overflow-x-hidden selection:bg-neon-safe/30 relative">
-        <div v-if="store.storageFailed" class="fixed top-0 left-0 right-0 z-50 bg-neon-danger/20 border-b border-neon-danger px-4 py-2 text-center">
-            <span class="text-neon-danger text-xs font-mono">⚠ Storage unavailable — data will be lost when you close this tab</span>
-        </div>
-        <div v-else-if="store.syncFailed" class="fixed top-0 left-0 right-0 z-50 bg-amber-500/20 border-b border-amber-500/40 px-4 py-2 text-center">
-            <span class="text-amber-400 text-xs font-mono">⚠ Supabase sync failed — changes saved locally, retrying automatically</span>
+        <div v-if="store.syncFailed" class="fixed top-0 left-0 right-0 z-50 bg-neon-danger/20 border-b border-neon-danger px-4 py-2 text-center">
+            <span class="text-neon-danger text-xs font-mono">⚠ Supabase sync failed — please check your internet connection</span>
         </div>
 
         <div class="absolute top-4 left-0 w-full px-6 sm:px-10 flex justify-between z-20 pointer-events-none">
-            <div class="font-mono text-[10px] text-text-muted">V3.2-TACTICAL • {{ currentDateStr }}</div>
+            <div class="font-mono text-[10px] text-text-muted">V3.2 Beta Version • {{ currentDateStr }}</div>
             <div class="font-mono text-[10px] text-text-muted hidden sm:flex gap-2 items-center">
-                <span>DISK: 14%</span>
                 <span v-if="store.isSyncing" class="text-neon-safe animate-pulse">SYNC: SYNCING...</span>
-                <span v-else-if="store.syncFailed" class="text-amber-400">SYNC: OFFLINE</span>
+                <span v-else-if="store.syncFailed" class="text-neon-danger">SYNC: FAILED</span>
                 <span v-else>SYNC: OK</span>
                 <span>OLED: ON</span>
                 <button @click="signOut" class="pointer-events-auto flex items-center gap-1 text-text-muted hover:text-neon-danger transition-colors ml-2">

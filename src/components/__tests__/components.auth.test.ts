@@ -52,7 +52,6 @@ function createTestStore(overrides: {
   pockets?: Pocket[];
   transactions?: Transaction[];
   isLoaded?: boolean;
-  storageFailed?: boolean;
   syncFailed?: boolean;
   isSyncing?: boolean;
 } = {}) {
@@ -64,7 +63,6 @@ function createTestStore(overrides: {
         transactions: overrides.transactions ?? [],
         monthStart: Date.now(),
         isLoaded: overrides.isLoaded ?? true,
-        storageFailed: overrides.storageFailed ?? false,
         syncFailed: overrides.syncFailed ?? false,
         isSyncing: overrides.isSyncing ?? false,
         syncEnabled: false,
@@ -195,35 +193,18 @@ describe('App.vue — Status Banners', () => {
     mockConfirm(true);
   });
 
-  it('should show storage failed banner when storageFailed is true', () => {
-    createTestStore({ storageFailed: true, syncFailed: false });
-    const wrapper = mountApp();
-
-    expect(wrapper.text()).toContain('Storage unavailable');
-    expect(wrapper.text()).toContain('data will be lost');
-  });
-
-  it('should show sync failed banner when syncFailed is true and storageFailed is false', () => {
-    createTestStore({ storageFailed: false, syncFailed: true });
+  it('should show sync failed banner when syncFailed is true', () => {
+    createTestStore({ syncFailed: true });
     const wrapper = mountApp();
 
     expect(wrapper.text()).toContain('Supabase sync failed');
-    expect(wrapper.text()).toContain('changes saved locally');
+    expect(wrapper.text()).toContain('please check your internet connection');
   });
 
-  it('should prioritize storage failed banner over sync failed banner', () => {
-    createTestStore({ storageFailed: true, syncFailed: true });
+  it('should not show sync failed banner when syncFailed is false', () => {
+    createTestStore({ syncFailed: false });
     const wrapper = mountApp();
 
-    expect(wrapper.text()).toContain('Storage unavailable');
-    expect(wrapper.text()).not.toContain('Supabase sync failed');
-  });
-
-  it('should not show any banner when both flags are false', () => {
-    createTestStore({ storageFailed: false, syncFailed: false });
-    const wrapper = mountApp();
-
-    expect(wrapper.text()).not.toContain('Storage unavailable');
     expect(wrapper.text()).not.toContain('Supabase sync failed');
   });
 
@@ -234,11 +215,11 @@ describe('App.vue — Status Banners', () => {
     expect(wrapper.text()).toContain('SYNC: SYNCING...');
   });
 
-  it('should show SYNC: OFFLINE when syncFailed is true and not syncing', () => {
+  it('should show SYNC: FAILED when syncFailed is true and not syncing', () => {
     createTestStore({ isSyncing: false, syncFailed: true });
     const wrapper = mountApp();
 
-    expect(wrapper.text()).toContain('SYNC: OFFLINE');
+    expect(wrapper.text()).toContain('SYNC: FAILED');
   });
 
   it('should show SYNC: OK when not syncing and not failed', () => {
@@ -277,13 +258,30 @@ describe('App.vue — Dashboard Content', () => {
   });
 
   it('should show "Danger" status badge when total remaining is negative', () => {
+    const now = Date.now();
     const pockets = structuredClone(DEFAULT_POCKETS);
     pockets[0].allocation = 100000;
     const transactions: Transaction[] = [
-      { id: 'tx-1', type: 'expense', fromPocketId: POCKET_IDS.PANGAN, amount: 9999999, timestamp: Date.now() },
+      { id: 'tx-1', type: 'expense', fromPocketId: POCKET_IDS.PANGAN, amount: 9999999, timestamp: now + 1000 },
     ];
 
-    createTestStore({ pockets, transactions });
+    const pinia = createTestingPinia({
+      createSpy: vi.fn,
+      initialState: {
+        main: {
+          pockets,
+          transactions,
+          monthStart: now,
+          isLoaded: true,
+          syncFailed: false,
+          isSyncing: false,
+          syncEnabled: false,
+          userId: null,
+        },
+      },
+      stubActions: true,
+    });
+    setActivePinia(pinia);
     const wrapper = mountApp();
 
     expect(wrapper.text()).toContain('Danger');

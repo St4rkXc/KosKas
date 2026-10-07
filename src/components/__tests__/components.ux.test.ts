@@ -63,7 +63,6 @@ function createTestStore(overrides: {
         transactions: overrides.transactions ?? [],
         monthStart: Date.now(),
         isLoaded: overrides.isLoaded ?? true,
-        storageFailed: false,
         syncFailed: false,
         isSyncing: false,
         syncEnabled: false,
@@ -898,11 +897,53 @@ describe('Error States & Edge Cases', () => {
     });
 
     it('status badge shows Danger when total remaining is negative', () => {
+      const now = Date.now();
       const transactions: Transaction[] = [
-        { id: 'tx-1', type: 'expense', fromPocketId: 'pangan', amount: 2000000, timestamp: Date.now() },
-        { id: 'tx-2', type: 'expense', fromPocketId: 'kos', amount: 2000000, timestamp: Date.now() },
+        { id: 'tx-1', type: 'expense', fromPocketId: 'pangan', amount: 2000000, timestamp: now + 1000 },
+        { id: 'tx-2', type: 'expense', fromPocketId: 'kos', amount: 2000000, timestamp: now + 2000 },
       ];
-      const { wrapper } = mountAuthenticatedApp({ transactions });
+      const pinia = createTestingPinia({
+        createSpy: vi.fn,
+        initialState: {
+          main: {
+            pockets: structuredClone(DEFAULT_POCKETS),
+            transactions,
+            monthStart: now,
+            isLoaded: true,
+            syncFailed: false,
+            isSyncing: false,
+            syncEnabled: false,
+            userId: null,
+          },
+        },
+        stubActions: false,
+      });
+      setActivePinia(pinia);
+      const wrapper = shallowMount(App, {
+        global: {
+          plugins: [pinia],
+          stubs: {
+            KeypadModal: true,
+            PocketSettingsModal: true,
+            TransferModal: true,
+            Settings: { template: '<span />' },
+            RefreshCw: { template: '<span />' },
+            Trash2: { template: '<span />' },
+            Plus: { template: '<span />' },
+            ArrowLeftRight: { template: '<span />' },
+            BarChart3: { template: '<span />' },
+            LayoutGrid: { template: '<span />' },
+            TrendingUp: { template: '<span />' },
+            TrendingDown: { template: '<span />' },
+            ChevronLeft: { template: '<span />' },
+            ChevronRight: { template: '<span />' },
+            Clock: { template: '<span />' },
+            LogOut: { template: '<span />' },
+            PiggyBank: { template: '<span />' },
+            AlertCircle: { template: '<span />' },
+          },
+        },
+      });
       expect(wrapper.text()).toContain('Danger');
     });
 
@@ -1017,61 +1058,6 @@ describe('Error States & Edge Cases', () => {
 
       expect(wrapper.text()).not.toContain('Total Sisa Saldo');
       expect(wrapper.text()).not.toContain('Pangan Hari Ini');
-    });
-  });
-
-  describe('Storage failure warning', () => {
-    it('shows storage failure banner when storageFailed is true', () => {
-      mockAuthState.user = AUTHENTICATED_USER;
-      mockAuthState.loading = false;
-
-      const pinia = createTestingPinia({
-        createSpy: vi.fn,
-        initialState: {
-          main: {
-            pockets: structuredClone(DEFAULT_POCKETS),
-            transactions: [],
-            isLoaded: true,
-            storageFailed: true,
-            syncFailed: false,
-            isSyncing: false,
-            syncEnabled: false,
-            userId: null,
-            monthStart: Date.now(),
-          },
-        },
-        stubActions: false,
-      });
-      setActivePinia(pinia);
-      const store = useStore();
-
-      const wrapper = shallowMount(App, {
-        global: {
-          plugins: [pinia],
-          stubs: {
-            KeypadModal: true,
-            PocketSettingsModal: true,
-            TransferModal: true,
-            Settings: { template: '<span />' },
-            RefreshCw: { template: '<span />' },
-            Trash2: { template: '<span />' },
-            Plus: { template: '<span />' },
-            ArrowLeftRight: { template: '<span />' },
-            BarChart3: { template: '<span />' },
-            LayoutGrid: { template: '<span />' },
-            TrendingUp: { template: '<span />' },
-            TrendingDown: { template: '<span />' },
-            ChevronLeft: { template: '<span />' },
-            ChevronRight: { template: '<span />' },
-            Clock: { template: '<span />' },
-            LogOut: { template: '<span />' },
-            PiggyBank: { template: '<span />' },
-            AlertCircle: { template: '<span />' },
-          },
-        },
-      });
-
-      expect(wrapper.text()).toContain('Storage unavailable');
     });
   });
 
